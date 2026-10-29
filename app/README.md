@@ -37,7 +37,7 @@ npm run build      # 型チェック＋本番ビルド
   - [x] PWA マニフェスト・アイコン・Service Worker によるアプリシェルのオフライン対応
   - [x] GitHub Actions でテスト・ビルド後にGitHub Pagesへデプロイするworkflow（`deployment/github-pages.yml`。public側では `.github/workflows/pages.yml` にコピー）
   - [x] publicリポジトリへのアプリのみの初回反映とPages有効化（#77）
-  - [ ] 閲覧モードの実機確認（#78。`[newpage]`単位のページ送りを配信後、iPhoneでページ移動とページ内スクロールを確認）
+  - [ ] iPhoneでの表示確認（#78。閲覧のページ送り・ページ内スクロールと、入力時のキーボード表示／解除後の倍率を確認）
   - [x] iPhoneでホーム画面から起動し、オフライン利用・編集後のオンライン同期を確認（#79）
 
 手作業で残っているもの：#78（閲覧モードの実機確認）。#77と#79は対応済み。#80（package-lock.json）も対応済み。

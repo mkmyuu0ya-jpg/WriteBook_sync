@@ -15,6 +15,7 @@ export default function EditPage() {
   const [save, setSave] = useState<Save>('saved');
   const [note, setNote] = useState('');
   const editor = useRef<EditorHandle>(null);
+  const editorScreen = useRef<HTMLDivElement>(null);
   const latest = useRef('');
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
@@ -31,6 +32,30 @@ export default function EditPage() {
     // 開いたときの 1 回だけ読む
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
+
+  useEffect(() => {
+    if (!init) return;
+    const screen = editorScreen.current;
+    if (!screen) return;
+
+    const viewport = window.visualViewport;
+    let previousHeight = 0;
+    const updateHeight = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      if (Math.abs(height - previousHeight) < 1) return;
+      previousHeight = height;
+      screen.style.setProperty('--editor-viewport-height', `${height}px`);
+    };
+
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    viewport?.addEventListener('resize', updateHeight);
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      viewport?.removeEventListener('resize', updateHeight);
+      screen.style.removeProperty('--editor-viewport-height');
+    };
+  }, [init]);
 
   const flush = useCallback(async () => {
     window.clearTimeout(timer.current);
@@ -72,7 +97,7 @@ export default function EditPage() {
     </button>
   );
   return (
-    <div className="ed">
+    <div className="ed" ref={editorScreen}>
       <div className="ed-bar">
         <button
           onClick={async () => {
