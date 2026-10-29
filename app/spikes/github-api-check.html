@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub API・Gist 検証（Phase 0）</title>
+<style>
+:root{--bg:#f4f5f7;--fg:#1d2330;--card:#fff;--line:#c4cad6;--ok:#1d7a46;--ng:#b3261e;--ac:#2b5d8a}
+@media (prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#dde2ea;--card:#1f2530;--line:#4a5262;--ok:#6fcf97;--ng:#ff8a80;--ac:#8fb8e0}}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 system-ui,"Yu Gothic UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:18px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin:12px 0}
+label{display:block;margin:6px 0 2px;font-size:12px}
+input{width:100%;box-sizing:border-box;padding:6px 8px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.g{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 12px;margin:8px 6px 0 0}
+button.p{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{border-top:1px solid var(--line);padding:4px 6px;vertical-align:top}
+.ok{color:var(--ok);font-weight:700}.ng{color:var(--ng);font-weight:700}
+small{opacity:.8}
+</style>
+</head>
+<body>
+<main>
+<h1>GitHub API・Gist 検証</h1>
+<div class="card"><small>トークンはこのページの中だけで使い、api.github.com 以外には送信せず、保存もしません。テストは一時ブランチ（book-spike-日時）だけで行い、終了時にブランチと Gist を削除します。main には触れません。終わったらトークンを失効してください。</small>
+<div class="g"><div><label>オーナー</label><input id="o" value="mkmyuu0ya-jpg"></div><div><label>リポジトリ</label><input id="r" value="app"></div><div><label>基準ブランチ</label><input id="b" value="main"></div></div>
+<label>Fine-grained トークン（Contents 読み書き＋Gists 読み書き）</label><input id="t" type="password" autocomplete="off">
+<button class="p" id="run">すべて実行</button><button id="cp">結果をコピー</button></div>
+<div class="card"><table id="tb"></table><div id="sm"></div></div>
+</main>
+<script>
+const $=s=>document.querySelector(s),L=[],S={};
+const need=(c,m)=>{if(!c)throw new Error(m)};
+async function api(path,o={}){const h={Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+ if(o.auth!==false)h.Authorization='Bearer '+$('#t').value.trim();
+ if(o.body)h['Content-Type']='application/json';
+ const r=await fetch('https://api.github.com'+path,{method:o.method||'GET',headers:h,cache:'no-store',body:o.body?JSON.stringify(o.body):undefined});
+ let j=null;try{j=await r.json()}catch(e){}
+ return{ok:r.ok,status:r.status,j,rl:r.headers.get('x-ratelimit-remaining'),cc:r.headers.get('cache-control')};}
+function row(n,ok,ms,m){$('#tb').insertAdjacentHTML('beforeend','<tr><td class="'+(ok?'ok':'ng')+'">'+(ok?'OK':'NG')+'</td><td>'+n+'</td><td>'+ms+'ms</td><td>'+String(m).replace(/</g,'&lt;')+'</td></tr>');
+ L.push((ok?'OK':'NG')+'\t'+n+'\t'+ms+'ms\t'+m);S.n=(S.n||0)+1;if(ok)S.ok=(S.ok||0)+1;}
+async function step(n,fn){const t0=performance.now();try{const m=await fn();row(n,true,Math.round(performance.now()-t0),m||'');return true}
+ catch(e){row(n,false,Math.round(performance.now()-t0),e.message||e);return false}}
+async function commit(R,parent,files,msg){
+ const pc=await api(R+'/git/commits/'+parent);need(pc.ok,'親コミット取得 '+pc.status);
+ const tree=[];
+ for(const f of files){
+  if(f.content==null){tree.push({path:f.path,mode:'100644',type:'blob',sha:null});continue;}
+  const b=await api(R+'/git/blobs',{method:'POST',body:{content:f.content,encoding:'utf-8'}});need(b.ok,'blob作成 '+b.status);
+  tree.push({path:f.path,mode:'100644',type:'blob',sha:b.j.sha});}
+ const t=await api(R+'/git/trees',{method:'POST',body:{base_tree:pc.j.tree.sha,tree}});need(t.ok,'tree作成 '+t.status);
+ const c=await api(R+'/git/commits',{method:'POST',body:{message:msg,tree:t.j.sha,parents:[parent]}});need(c.ok,'commit作成 '+c.status);
+ return c.j.sha;}
+const setRef=(R,br,sha)=>api(R+'/git/refs/heads/'+br,{method:'PATCH',body:{sha,force:false}});
+const dec=b64=>new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g,'')),c=>c.charCodeAt(0)));
+const A='book/data/_spike/a.txt',B='book/data/_spike/b.txt';
+const TXT='テスト本文\n[chapter:章]\n[[rb:漢字 > かんじ]]\n';
+async function run(){
+ $('#tb').innerHTML='';L.length=0;S.n=0;S.ok=0;$('#sm').textContent='';
+ const R='/repos/'+$('#o').value.trim()+'/'+$('#r').value.trim(),base=$('#b').value.trim(),br='book-spike-'+Date.now();
+ let ok=await step('リポジトリ確認',async()=>{const x=await api(R);need(x.ok,x.status+' '+(x.j&&x.j.message));return 'private='+x.j.private+' push権限='+(x.j.permissions&&x.j.permissions.push)});
+ if(ok)ok=await step('基準ブランチの先頭を取得',async()=>{const x=await api(R+'/git/ref/heads/'+base);need(x.ok,x.status);S.head=x.j.object.sha;return S.head.slice(0,7)});
+ if(ok)ok=await step('一時ブランチを作成',async()=>{const x=await api(R+'/git/refs',{method:'POST',body:{ref:'refs/heads/'+br,sha:S.head}});need(x.ok,x.status+' '+(x.j&&x.j.message));S.br=br;S.cur=S.head;return br});
+ if(ok)ok=await step('ツリー一覧を取得（blob SHA つき）',async()=>{const c=await api(R+'/git/commits/'+S.head);need(c.ok,c.status);const t=await api(R+'/git/trees/'+c.j.tree.sha+'?recursive=1');need(t.ok,t.status);return t.j.tree.length+'件 truncated='+t.j.truncated});
+ if(ok)ok=await step('複数ファイルを1コミットで書き込み',async()=>{const c=await commit(R,S.cur,[{path:A,content:TXT},{path:B,content:TXT}],'spike: 2 files');const x=await setRef(R,br,c);need(x.ok,'ref更新 '+x.status);S.c1=S.cur=c;return 'ref更新OK'});
+ if(ok)ok=await step('書き込んだ内容を取得して照合（日本語・記法）',async()=>{const x=await api(R+'/contents/'+A+'?ref='+br);need(x.ok,x.status);need(dec(x.j.content)===TXT,'内容が一致しない');return '一致'});
+ if(ok)ok=await step('競合の検知と載せ直し',async()=>{
+  const c2=await commit(R,S.c1,[{path:A,content:TXT+'2回目\n'}],'spike: edit a');const r2=await setRef(R,br,c2);need(r2.ok,'ref更新 '+r2.status);S.cur=c2;
+  const st=await commit(R,S.c1,[{path:B,content:TXT+'古い親\n'}],'spike: stale');const rs=await setRef(R,br,st);need(!rs.ok,'古い親の更新が通ってしまった');
+  const rb=await commit(R,c2,[{path:B,content:TXT+'載せ直し\n'}],'spike: rebased');const rr=await setRef(R,br,rb);need(rr.ok,'載せ直し失敗 '+rr.status);S.cur=rb;
+  return '競合='+rs.status+' 載せ直し=成功'});
+ if(ok)ok=await step('ファイルの履歴を取得',async()=>{const x=await api(R+'/commits?sha='+br+'&path='+A+'&per_page=10');need(x.ok,x.status);return x.j.length+'件（期待：2件）'});
+ if(ok)ok=await step('ツリー上の削除（sha:null）',async()=>{const c=await commit(R,S.cur,[{path:A,content:null},{path:B,content:null}],'spike: delete');const x=await setRef(R,br,c);need(x.ok,x.status);S.cur=c;const g=await api(R+'/contents/'+A+'?ref='+br);need(g.status===404,'削除されていない '+g.status);return '削除を確認'});
+ let g=await step('Gist（限定公開）を作成',async()=>{const x=await api('/gists',{method:'POST',body:{description:'book spike',public:false,files:{'body.txt':{content:TXT}}}});need(x.ok,x.status+' '+(x.j&&x.j.message));S.gid=x.j.id;return 'id='+S.gid.slice(0,8)});
+ if(g)g=await step('Gist を認証なしで取得（CORS・内容）',async()=>{const x=await api('/gists/'+S.gid,{auth:false});need(x.ok,x.status);need(x.j.files['body.txt'].content===TXT,'内容が一致しない');return '一致 残り回数='+x.rl});
+ if(g)g=await step('Gist を更新（認証なしの読み取りに反映されるまでの時間を計測）',async()=>{const u=await api('/gists/'+S.gid,{method:'PATCH',body:{files:{'body.txt':{content:TXT+'更新\n'}}}});need(u.ok,u.status);const a=await api('/gists/'+S.gid);need(a.j.files['body.txt'].content===TXT+'更新\n','認証ありでも反映されない');const t0=performance.now();for(;;){const x=await api('/gists/'+S.gid,{auth:false});if(x.j.files['body.txt'].content===TXT+'更新\n')return '認証あり=即時 認証なし='+Math.round((performance.now()-t0)/1000)+'秒後 cache-control='+x.cc;need(performance.now()-t0<150000,'150秒たっても反映されない cache-control='+x.cc);await new Promise(r=>setTimeout(r,5000));}});
+ if(S.gid)await step('Gist を削除（認証なしで読めなくなるまでの時間を計測）',async()=>{const d=await api('/gists/'+S.gid,{method:'DELETE'});need(d.status===204,'削除 '+d.status);const t0=performance.now();for(;;){const x=await api('/gists/'+S.gid,{auth:false});if(x.status===404){S.gid=null;return '認証なし='+Math.round((performance.now()-t0)/1000)+'秒後に404';}need(performance.now()-t0<150000,'150秒たっても読める');await new Promise(r=>setTimeout(r,5000));}});
+ if(S.br)await step('一時ブランチを削除',async()=>{const d=await api(R+'/git/refs/heads/'+S.br,{method:'DELETE'});need(d.status===204,d.status);S.br=null;return '削除'});
+ $('#sm').textContent=S.ok+' / '+S.n+' 件OK。トークンを失効してください。';L.push($('#sm').textContent);}
+$('#run').onclick=run;
+$('#cp').onclick=()=>navigator.clipboard.writeText(L.join('\n')).then(()=>{$('#sm').textContent+=' （コピーしました）'});
+</script>
+</body>
+</html>

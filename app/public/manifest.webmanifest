@@ -1,0 +1,18 @@
+{
+  "name": "小説管理",
+  "short_name": "小説管理",
+  "description": "シリーズと本で小説原稿を管理する個人用アプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

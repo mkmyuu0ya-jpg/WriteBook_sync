@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>縦書きページ送り 検証</title>
+<style>
+:root{--bg:#f4f5f7;--fg:#1d2330;--bar:#e6e9ee;--line:#aab2c0;--ac:#2b5d8a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181f;--fg:#dde2ea;--bar:#1f2530;--line:#4a5262;--ac:#8fb8e0}}
+:root[data-theme="dark"]{--bg:#14181f;--fg:#dde2ea;--bar:#1f2530;--line:#4a5262;--ac:#8fb8e0}
+html,body{height:100%;margin:0;-webkit-text-size-adjust:100%}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--fg);display:flex;flex-direction:column;font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif}
+#bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;background:var(--bar);border-bottom:1px solid var(--line);font:13px system-ui,sans-serif}
+#bar button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 10px}
+#bar button:focus-visible{outline:2px solid var(--ac)}
+#ind{margin-left:auto;color:var(--ac);font-weight:600}
+#stage{flex:1;min-height:0;display:flex;touch-action:pan-y;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#vp{margin:auto;outline:1px dashed var(--line)}
+#vp.v{writing-mode:vertical-rl}
+#vp.h{writing-mode:horizontal-tb}
+#tx{line-break:strict;text-orientation:mixed}
+#tx p{margin:0;text-indent:1em}
+#tx p.q{text-indent:0}
+#tx h2{margin:0;font-size:1.3em;font-weight:700;line-height:var(--L)}
+#tx rt{font-size:.5em}
+#tx .np{display:block}
+#dbg{font:11px/1.5 system-ui,sans-serif;padding:4px 8px;color:var(--fg);opacity:.75;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div id="bar">
+<button id="bV"></button><button id="bP"></button><button id="fm">A−</button><button id="fp">A＋</button><button id="pv">前</button><button id="nx">次</button><span id="ind"></span>
+</div>
+<div id="stage"><div id="vp"><div id="tx"></div></div></div>
+<div id="dbg"></div>
+<script>
+const $=s=>document.querySelector(s);
+const st={vert:true,paged:true,fs:20,page:0,P:1,n:1};
+const base=['夜の駅には、まだ[[rb:誰 > だれ]]も来ていなかった。','改札の向こうで、古い時計だけが[[rb:規則正しく > きそくただしく]]時を刻んでいる。','「まもなく、最終列車がまいります」','アナウンスの声は、誰もいないホームに吸い込まれていった。','彼女はコートの襟を立て、遠くの線路の先を見つめた。まだ光は見えない。風が止むたび、レールが小さく鳴るのが聞こえた。'].join('\n');
+const rep=k=>Array(k).fill(base).join('\n');
+const SRC='[chapter:第一章　終電]\n'+rep(5)+'\n[newpage]\n[chapter:第二章　待ち合わせ]\n'+rep(2)+'\n[newpage]\n[chapter:第三章　長い章（改ページなし）]\n'+rep(10);
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function parse(src){return src.split('\n').map(l=>{let m;
+ if(l==='[newpage]')return '<div class="np"></div>';
+ if(m=l.match(/^\[chapter:(.+)\]$/))return '<h2>'+esc(m[1])+'</h2>';
+ return '<p'+(l[0]==='「'?' class="q"':'')+'>'+esc(l).replace(/\[\[rb:(.+?)\s*&gt;\s*(.+?)\]\]/g,'<ruby>$1<rt>$2</rt></ruby>')+'</p>';}).join('');}
+$('#tx').innerHTML=parse(SRC);
+function layout(f){
+ const vp=$('#vp'),tx=$('#tx'),sg=$('#stage'),L=Math.round(st.fs*2.4);
+ const aw=sg.clientWidth-16,ah=sg.clientHeight-16;
+ vp.className=st.vert?'v':'h';tx.style.transform='none';
+ tx.style.fontSize=st.fs+'px';tx.style.lineHeight=L+'px';tx.style.setProperty('--L',L+'px');
+ let P;
+ if(st.vert){const H=Math.max(L,Math.floor(ah/st.fs)*st.fs);P=st.paged?Math.max(L,Math.floor(aw/L)*L):aw;
+  vp.style.width=P+'px';vp.style.height=H+'px';vp.style.overflowX=st.paged?'hidden':'auto';vp.style.overflowY='hidden';}
+ else{P=st.paged?Math.max(L,Math.floor(ah/L)*L):ah;
+  vp.style.width=aw+'px';vp.style.height=P+'px';vp.style.overflowY=st.paged?'hidden':'auto';vp.style.overflowX='hidden';}
+ st.P=P;
+ const nps=[...tx.querySelectorAll('.np')],ax=st.vert?'width':'height',ox=st.vert?'height':'width';
+ nps.forEach(n=>{n.style[ox]='';n.style[ax]=st.paged?'0px':L+'px';});
+ if(st.paged){const t=tx.getBoundingClientRect();
+  nps.forEach(n=>{const r=n.getBoundingClientRect();const off=st.vert?t.right-r.right:r.top-t.top;const rem=((off%P)+P)%P;
+   if(rem>1&&P-rem>1)n.style[ax]=(P-rem)+'px';});}
+ vp.scrollLeft=0;vp.scrollTop=0;
+ const total=st.vert?vp.scrollWidth:vp.scrollHeight;
+ st.n=st.paged?Math.max(1,Math.ceil(total/P-0.001)):1;
+ go(f==null?Math.min(st.page,st.n-1):Math.floor(f*st.n));
+ const dv=[...tx.children].filter(e=>e.tagName!=='DIV').map(e=>{const w=e.getBoundingClientRect()[st.vert?'width':'height'];return Math.abs(w/L-Math.round(w/L))*L;});$('#dbg').textContent='ずれ最大='+Math.max(0,...dv).toFixed(1)+'px L='+L+' P='+P+' 全体='+total+' 行数≈'+(total/L).toFixed(2)+' 改ページ='+nps.length+' 縦書き対応='+CSS.supports('writing-mode','vertical-rl')+' / 確認：①ページ端で行が欠けない ②ルビで行がずれない（行数≈が整数に近い） ③改ページ後は新しいページから始まる ④A−/A＋で再計算 ⑤縦横・ページ/スクロールの切替';
+}
+function go(p){const vp=$('#vp');
+ if(!st.paged){$('#ind').textContent='連続スクロール';return;}
+ st.page=Math.max(0,Math.min(st.n-1,p));
+ $('#tx').style.transform=st.vert?'translateX('+(st.page*st.P)+'px)':'translateY('+(-st.page*st.P)+'px)';
+ $('#ind').textContent=(st.page+1)+' / '+st.n+' ページ';}
+const next=()=>go(st.page+1),prev=()=>go(st.page-1);
+function lab(){$('#bV').textContent=st.vert?'縦書き':'横書き';$('#bP').textContent=st.paged?'ページ送り':'スクロール';}
+function re(){const f=st.page/st.n;lab();layout(f);}
+$('#bV').onclick=()=>{st.vert=!st.vert;re();};
+$('#bP').onclick=()=>{st.paged=!st.paged;re();};
+$('#fm').onclick=()=>{st.fs=Math.max(12,st.fs-2);re();};
+$('#fp').onclick=()=>{st.fs=Math.min(36,st.fs+2);re();};
+$('#pv').onclick=prev;$('#nx').onclick=next;
+let sx=0,sw=false;
+$('#stage').addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sw=false;},{passive:true});
+$('#stage').addEventListener('touchend',e=>{if(!st.paged)return;const dx=e.changedTouches[0].clientX-sx;
+ if(Math.abs(dx)>40){sw=true;(st.vert?dx>0:dx<0)?next():prev();}},{passive:true});
+$('#stage').addEventListener('click',e=>{if(!st.paged||sw)return;const r=$('#stage').getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+ (st.vert?x<.5:x>.5)?next():prev();});
+addEventListener('keydown',e=>{if(!st.paged)return;
+ const nx=st.vert?'ArrowLeft':'ArrowRight',pv=st.vert?'ArrowRight':'ArrowLeft';
+ if(e.key===nx||e.key===' ')next();else if(e.key===pv)prev();});
+addEventListener('resize',()=>layout(st.page/st.n));
+lab();layout();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>layout(st.page/st.n));
+</script>
+</body>
+</html>
