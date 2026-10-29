@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { parse, type Block, type Inline } from '../lib/parser/pixiv';
-import { fitFontSize, pageMetrics, spacerSize } from '../lib/reader/layout';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { pages as splitPages, parse, type Block, type Inline } from '../lib/parser/pixiv';
+import { fitFontSize, pageMetrics } from '../lib/reader/layout';
 import { useReaderSettings } from '../stores/readerSettings';
 import './reader.css';
 
@@ -26,7 +26,7 @@ function BlockView({ b }: { b: Block }) {
     case 'chapter':
       return <h2 data-line={b.line}>{b.title}</h2>;
     case 'newpage':
-      return <div className="np" data-np="" data-line={b.line} />;
+      return null;
     case 'blank':
       return <p data-line={b.line}>{'\u00a0'}</p>;
     case 'para':
@@ -38,7 +38,13 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-/** 閲覧モード：自然スクロールし、[newpage] で次の画面境界へ移動する。 */
+function pageForLine(bookPages: Block[][], line: number | undefined): number {
+  if (line === undefined) return 0;
+  const index = bookPages.findIndex((page) => page.some((block) => block.line >= line));
+  return index < 0 ? bookPages.length - 1 : index;
+}
+
+/** 閲覧モード：[newpage] 単位でページを切り替え、ページ内は必要に応じてスクロールする。 */
 export default function Reader({
   source,
   startLine,
@@ -59,27 +65,35 @@ export default function Reader({
 }) {
   const { vert, fs, update } = useReaderSettings();
   const blocks = useMemo(() => parse(source), [source]);
+  const bookPages = useMemo(() => splitPages(blocks), [blocks]);
+  const [pageIndex, setPageIndex] = useState(() => pageForLine(bookPages, startLine));
+  const currentPageIndex = Math.min(pageIndex, bookPages.length - 1);
+  const currentBlocks = bookPages[currentPageIndex] ?? [];
 
   const stageRef = useRef<HTMLDivElement>(null);
   const vpRef = useRef<HTMLDivElement>(null);
   const txRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<number | undefined>(startLine);
+  const visibleLineRef = useRef<number | undefined>(startLine);
   const previousVertRef = useRef(vert);
+  const resetOffsetRef = useRef(false);
+  const inputRef = useRef({ source, startLine });
 
   const reportVisibleLine = useCallback(() => {
     const vp = vpRef.current;
     const tx = txRef.current;
-    if (!vp || !tx || !onLine) return;
+    if (!vp || !tx) return;
 
     const offset = vert ? Math.max(0, -vp.scrollLeft) : Math.max(0, vp.scrollTop);
     const textRect = tx.getBoundingClientRect();
     for (const el of tx.querySelectorAll<HTMLElement>('[data-line]')) {
-      if (el.hasAttribute('data-np')) continue;
       const rect = el.getBoundingClientRect();
       const start = vert ? textRect.right - rect.right : rect.top - textRect.top;
       const extent = vert ? rect.width : rect.height;
       if (start + extent > offset + 1) {
-        onLine(Number(el.dataset.line));
+        const line = Number(el.dataset.line);
+        visibleLineRef.current = line;
+        onLine?.(line);
         return;
       }
     }
@@ -95,13 +109,10 @@ export default function Reader({
     const ah = Math.max(1, stage.clientHeight - 16);
     const displayFs = fitFontSize({ vert, fs, aw, ah });
     const m = pageMetrics({ vert, fs: displayFs, aw, ah });
-    const currentOffset = previousVertRef.current === vert
+    const currentOffset = !resetOffsetRef.current && previousVertRef.current === vert
       ? vert ? Math.max(0, -vp.scrollLeft) : Math.max(0, vp.scrollTop)
       : 0;
 
-    tx.style.transform = 'none';
-    tx.style.position = '';
-    tx.style.left = '';
     tx.style.fontSize = displayFs + 'px';
     tx.style.lineHeight = m.L + 'px';
     tx.style.setProperty('--L', m.L + 'px');
@@ -110,30 +121,17 @@ export default function Reader({
     vp.style.overflowX = vert ? 'auto' : 'hidden';
     vp.style.overflowY = vert ? 'hidden' : 'auto';
 
-    const axis = vert ? 'width' : 'height';
-    const otherAxis = vert ? 'height' : 'width';
-    const newPages = tx.querySelectorAll<HTMLElement>('[data-np]');
-    newPages.forEach((element) => {
-      element.style[axis] = '0px';
-      element.style[otherAxis] = '';
-    });
-
     const textRect = tx.getBoundingClientRect();
-    newPages.forEach((element) => {
-      const rect = element.getBoundingClientRect();
-      const offset = vert ? textRect.right - rect.right : rect.top - textRect.top;
-      element.style[axis] = `${spacerSize(offset, m.P)}px`;
-    });
-
     let targetOffset = currentOffset;
     if (startRef.current !== undefined) {
       const element = tx.querySelector<HTMLElement>(`[data-line="${startRef.current}"]`);
-      if (element && !element.hasAttribute('data-np')) {
+      if (element) {
         const rect = element.getBoundingClientRect();
         targetOffset = vert ? textRect.right - rect.right : rect.top - textRect.top;
       }
     }
     startRef.current = undefined;
+    resetOffsetRef.current = false;
     vp.scrollLeft = 0;
     vp.scrollTop = 0;
     if (vert) vp.scrollLeft = -targetOffset;
@@ -144,7 +142,15 @@ export default function Reader({
 
   useLayoutEffect(() => {
     relayout();
-  }, [relayout, blocks]);
+  }, [relayout, currentBlocks]);
+
+  useEffect(() => {
+    if (inputRef.current.source === source && inputRef.current.startLine === startLine) return;
+    inputRef.current = { source, startLine };
+    startRef.current = startLine;
+    resetOffsetRef.current = true;
+    setPageIndex(pageForLine(bookPages, startLine));
+  }, [bookPages, source, startLine]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -165,21 +171,66 @@ export default function Reader({
     };
   }, [relayout, reportVisibleLine]);
 
+  const goToPage = useCallback((requestedPage: number) => {
+    const nextPage = Math.max(0, Math.min(bookPages.length - 1, requestedPage));
+    if (nextPage === currentPageIndex) return;
+    startRef.current = undefined;
+    resetOffsetRef.current = true;
+    setPageIndex(nextPage);
+  }, [bookPages.length, currentPageIndex]);
+
+  const turnFromTap = (clientX: number) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const bounds = stage.getBoundingClientRect();
+    const nextHalf = vert
+      ? clientX < bounds.left + bounds.width / 2
+      : clientX >= bounds.left + bounds.width / 2;
+    goToPage(currentPageIndex + (nextHalf ? 1 : -1));
+  };
+
   return (
     <div className="rd">
       <div className="rd-bar">
         {notice && <span className="text-xs opacity-70">{notice}</span>}
         {onClose && <button onClick={onClose}>戻る</button>}
         {onEdit && <button onClick={onEdit}>加筆</button>}
-        <button onClick={() => update({ vert: !vert })}>{vert ? '縦書き' : '横書き'}</button>
+        <button onClick={() => {
+          startRef.current = visibleLineRef.current;
+          resetOffsetRef.current = true;
+          update({ vert: !vert });
+        }}>{vert ? '縦書き' : '横書き'}</button>
         <button onClick={() => update({ fs: Math.max(12, fs - 2) })}>A−</button>
         <button onClick={() => update({ fs: Math.min(36, fs + 2) })}>A＋</button>
-        <span className="rd-ind">スクロール</span>
+        <button onClick={() => goToPage(currentPageIndex - 1)} disabled={currentPageIndex === 0}>前</button>
+        <button onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex >= bookPages.length - 1}>次</button>
+        <span className="rd-ind" aria-live="polite">{currentPageIndex + 1} / {bookPages.length} ページ</span>
       </div>
-      <div className={`rd-stage ${vert ? 'v-scroll' : 'h-scroll'}`} ref={stageRef}>
+      <div
+        className={`rd-stage ${vert ? 'v-scroll' : 'h-scroll'}`}
+        ref={stageRef}
+        role="region"
+        aria-label={`閲覧ページ ${currentPageIndex + 1} / ${bookPages.length}`}
+        tabIndex={0}
+        onClick={(event) => {
+          if (event.target instanceof Element && event.target.closest('button')) return;
+          turnFromTap(event.clientX);
+        }}
+        onKeyDown={(event) => {
+          const nextKey = vert ? 'ArrowLeft' : 'ArrowRight';
+          const previousKey = vert ? 'ArrowRight' : 'ArrowLeft';
+          if (event.key === nextKey || event.key === ' ') {
+            event.preventDefault();
+            goToPage(currentPageIndex + 1);
+          } else if (event.key === previousKey) {
+            event.preventDefault();
+            goToPage(currentPageIndex - 1);
+          }
+        }}
+      >
         <div className={`rd-vp ${vert ? 'v' : 'h'}`} ref={vpRef}>
           <div className="rd-tx" ref={txRef}>
-            {blocks.map((b) => (
+            {currentBlocks.map((b) => (
               <BlockView key={b.line} b={b} />
             ))}
           </div>

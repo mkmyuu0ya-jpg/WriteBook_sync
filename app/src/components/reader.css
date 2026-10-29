@@ -72,14 +72,9 @@
 }
 .rd-vp.v {
   writing-mode: vertical-rl;
-  scroll-snap-type: x proximity;
 }
 .rd-vp.h {
   writing-mode: horizontal-tb;
-  scroll-snap-type: y proximity;
-}
-.rd-vp .np + [data-line] {
-  scroll-snap-align: start;
 }
 .rd-tx {
   line-break: strict;

@@ -46,6 +46,10 @@ describe('pages / outline', () => {
     expect(p).toHaveLength(2);
     expect(p[1]).toHaveLength(2);
   });
+  it('ページ境界は [newpage] の数だけ作る', () => {
+    const p = pages(parse('a\n[newpage]\nb\n[newpage]\nc'));
+    expect(p.map((page) => page.map((block) => block.line))).toEqual([[0], [2], [4]]);
+  });
   it('末尾の [newpage] のあとに空ページを作らない', () => {
     expect(pages(parse('a\n[newpage]'))).toHaveLength(1);
   });
