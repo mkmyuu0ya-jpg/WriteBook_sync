@@ -13,7 +13,7 @@ import { db } from '../stores/library';
 const input = 'w-full rounded border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800';
 const button = 'rounded border border-slate-400 bg-white px-3 py-1.5 text-sm dark:border-slate-500 dark:bg-slate-800';
 
-const EMPTY: GitHubSettings = { owner: 'mkmyuu0ya-jpg', repo: 'app', branch: 'main', token: '' };
+const EMPTY: GitHubSettings = { owner: '', repo: '', branch: '', token: '' };
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(EMPTY);
