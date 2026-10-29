@@ -22,6 +22,19 @@ export function linePitch(fontSize: number): number {
   return Math.round(fontSize * LINE_RATIO);
 }
 
+/** 画面に最低 1 行ぶん収まるよう、設定文字サイズを表示領域に合わせる。 */
+export function fitFontSize(o: {
+  vert: boolean;
+  fs: number;
+  aw: number;
+  ah: number;
+}): number {
+  const maxFs = o.vert
+    ? Math.min(o.aw / LINE_RATIO, o.ah)
+    : Math.min(o.aw, o.ah / LINE_RATIO);
+  return Math.max(1, Math.floor(Math.min(o.fs, maxFs)));
+}
+
 export function pageMetrics(o: {
   vert: boolean;
   paged: boolean;

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { linePitch, pageCount, pageMetrics, pageTransform, spacerSize } from './layout';
+import { fitFontSize, linePitch, pageCount, pageMetrics, pageTransform, spacerSize } from './layout';
 
 describe('layout', () => {
+  it('uses the configured font size when it fits, and shrinks it on a constrained screen', () => {
+    expect(fitFontSize({ vert: true, fs: 20, aw: 374, ah: 700 })).toBe(20);
+    expect(fitFontSize({ vert: true, fs: 36, aw: 70, ah: 320 })).toBe(29);
+    expect(fitFontSize({ vert: false, fs: 36, aw: 320, ah: 60 })).toBe(25);
+  });
   it('行送りは整数 px', () => {
     expect(linePitch(20)).toBe(48);
     expect(Number.isInteger(linePitch(13))).toBe(true);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { parse, type Block, type Inline } from '../lib/parser/pixiv';
-import { pageCount, pageMetrics, pageTransform, spacerSize } from '../lib/reader/layout';
+import { fitFontSize, pageCount, pageMetrics, pageTransform, spacerSize } from '../lib/reader/layout';
 import { useReaderSettings } from '../stores/readerSettings';
 import './reader.css';
 
@@ -76,9 +76,12 @@ export default function Reader({
     const vp = vpRef.current;
     const tx = txRef.current;
     if (!stage || !vp || !tx) return;
-    const m = pageMetrics({ vert, paged, fs, aw: stage.clientWidth - 16, ah: stage.clientHeight - 16 });
+    const aw = Math.max(1, stage.clientWidth - 16);
+    const ah = Math.max(1, stage.clientHeight - 16);
+    const displayFs = fitFontSize({ vert, fs, aw, ah });
+    const m = pageMetrics({ vert, paged, fs: displayFs, aw, ah });
     tx.style.transform = 'none';
-    tx.style.fontSize = fs + 'px';
+    tx.style.fontSize = displayFs + 'px';
     tx.style.lineHeight = m.L + 'px';
     tx.style.setProperty('--L', m.L + 'px');
     vp.style.width = m.vpW + 'px';
@@ -133,8 +136,16 @@ export default function Reader({
     if (!el) return;
     const ro = new ResizeObserver(() => relayout());
     ro.observe(el);
+    const viewport = window.visualViewport;
+    const onViewportResize = () => relayout();
+    window.addEventListener('resize', onViewportResize);
+    viewport?.addEventListener('resize', onViewportResize);
     void document.fonts?.ready.then(relayout);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onViewportResize);
+      viewport?.removeEventListener('resize', onViewportResize);
+    };
   }, [relayout]);
 
   useLayoutEffect(() => {
