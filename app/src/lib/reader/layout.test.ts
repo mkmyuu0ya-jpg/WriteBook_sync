@@ -7,6 +7,16 @@ describe('layout', () => {
     expect(fitFontSize({ vert: true, fs: 36, aw: 70, ah: 320 })).toBe(29);
     expect(fitFontSize({ vert: false, fs: 36, aw: 320, ah: 60 })).toBe(25);
   });
+  it('keeps the page viewport inside narrow available dimensions', () => {
+    for (const vert of [true, false]) {
+      const aw = 234;
+      const ah = 360;
+      const fs = fitFontSize({ vert, fs: 36, aw, ah });
+      const metrics = pageMetrics({ vert, paged: true, fs, aw, ah });
+      expect(metrics.vpW).toBeLessThanOrEqual(aw);
+      expect(metrics.vpH).toBeLessThanOrEqual(ah);
+    }
+  });
   it('行送りは整数 px', () => {
     expect(linePitch(20)).toBe(48);
     expect(Number.isInteger(linePitch(13))).toBe(true);
