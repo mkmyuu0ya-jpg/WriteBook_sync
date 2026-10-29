@@ -59,7 +59,7 @@ export default function SeriesPage() {
       >
         <label className="block text-sm">本を追加（本文は貼り付けでよい）</label>
         <input className={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="本のタイトル" />
-        <textarea className={`${input} h-40 font-mono text-sm`} value={body} onChange={(e) => setBody(e.target.value)} placeholder="本文（pixiv 記法のまま貼り付けられます）" />
+        <textarea className={`${input} h-40 font-mono text-base`} value={body} onChange={(e) => setBody(e.target.value)} placeholder="本文（pixiv 記法のまま貼り付けられます）" />
         <button className={btn} type="submit">
           追加
         </button>
