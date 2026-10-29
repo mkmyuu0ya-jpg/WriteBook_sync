@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitFontSize, linePitch, pageCount, pageMetrics, pageTransform, spacerSize } from './layout';
+import { fitFontSize, linePitch, pageMetrics, spacerSize } from './layout';
 
 describe('layout', () => {
   it('uses the configured font size when it fits, and shrinks it on a constrained screen', () => {
@@ -12,7 +12,7 @@ describe('layout', () => {
       const aw = 234;
       const ah = 360;
       const fs = fitFontSize({ vert, fs: 36, aw, ah });
-      const metrics = pageMetrics({ vert, paged: true, fs, aw, ah });
+      const metrics = pageMetrics({ vert, fs, aw, ah });
       expect(metrics.vpW).toBeLessThanOrEqual(aw);
       expect(metrics.vpH).toBeLessThanOrEqual(ah);
     }
@@ -21,39 +21,24 @@ describe('layout', () => {
     expect(linePitch(20)).toBe(48);
     expect(Number.isInteger(linePitch(13))).toBe(true);
   });
-  it('縦書き・ページ送り：ページ幅は行送りの整数倍、行長は文字サイズの整数倍', () => {
-    const m = pageMetrics({ vert: true, paged: true, fs: 20, aw: 366, ah: 700 });
+  it('縦書きスクロール：表示幅をそのまま使い、行長は文字サイズの整数倍', () => {
+    const m = pageMetrics({ vert: true, fs: 20, aw: 366, ah: 700 });
     expect(m.L).toBe(48);
-    expect(m.P % m.L).toBe(0);
-    expect(m.P).toBe(336);
+    expect(m.P).toBe(366);
+    expect(m.vpW).toBe(366);
     expect(m.vpH % 20).toBe(0);
   });
-  it('縦書き・スクロール：表示幅をそのまま使う', () => {
-    expect(pageMetrics({ vert: true, paged: false, fs: 20, aw: 366, ah: 700 }).P).toBe(366);
-  });
-  it('横書き・ページ送り：ページの高さは行送りの整数倍', () => {
-    const m = pageMetrics({ vert: false, paged: true, fs: 20, aw: 366, ah: 700 });
-    expect(m.P % m.L).toBe(0);
+  it('横書きスクロール：表示高さをそのまま使う', () => {
+    const m = pageMetrics({ vert: false, fs: 20, aw: 366, ah: 700 });
+    expect(m.P).toBe(700);
     expect(m.vpW).toBe(366);
+    expect(m.vpH).toBe(700);
   });
-  it('表示領域が極端に小さくても、1 行ぶんは確保する', () => {
-    expect(pageMetrics({ vert: true, paged: true, fs: 36, aw: 10, ah: 10 }).P).toBe(linePitch(36));
-  });
-  it('spacerSize：次のページ境界までの残り', () => {
+  it('[newpage] spacer：次の表示領域境界までの残り', () => {
     expect(spacerSize(100, 336)).toBe(236);
     expect(spacerSize(336, 336)).toBe(0);
     expect(spacerSize(0, 336)).toBe(0);
     expect(spacerSize(335.5, 336)).toBe(0);
     expect(spacerSize(-1, 336)).toBe(0);
-  });
-  it('pageCount', () => {
-    expect(pageCount(1, 336)).toBe(1);
-    expect(pageCount(672, 336)).toBe(2);
-    expect(pageCount(673, 336)).toBe(3);
-  });
-  it('pageTransform', () => {
-    expect(pageTransform(2, 336, true, true)).toBe('translateX(672px)');
-    expect(pageTransform(2, 336, false, true)).toBe('translateY(-672px)');
-    expect(pageTransform(2, 336, true, false)).toBe('none');
   });
 });

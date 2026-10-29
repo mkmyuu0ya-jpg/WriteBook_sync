@@ -4,8 +4,6 @@ import { persist } from 'zustand/middleware';
 export type ReaderSettings = {
   /** true: 縦書き / false: 横書き */
   vert: boolean;
-  /** true: ページ送り / false: スクロール */
-  paged: boolean;
   /** 文字サイズ（px） */
   fs: number;
 };
@@ -16,10 +14,20 @@ export const useReaderSettings = create<Store>()(
   persist(
     (set) => ({
       vert: true,
-      paged: true,
       fs: 20,
       update: (p) => set(p),
     }),
-    { name: 'book.reader' },
+    {
+      name: 'book.reader',
+      partialize: ({ vert, fs }) => ({ vert, fs }),
+      merge: (persistedState, currentState) => {
+        const stored = persistedState && typeof persistedState === 'object' ? persistedState : {};
+        return {
+          ...currentState,
+          vert: 'vert' in stored && typeof stored.vert === 'boolean' ? stored.vert : currentState.vert,
+          fs: 'fs' in stored && typeof stored.fs === 'number' ? stored.fs : currentState.fs,
+        };
+      },
+    },
   ),
 );

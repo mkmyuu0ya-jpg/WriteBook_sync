@@ -61,10 +61,14 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.rd-stage.v-scroll {
+  touch-action: pan-x;
+}
 .rd-vp {
   margin: auto;
   flex: none;
   -webkit-text-size-adjust: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 .rd-vp.v {
   writing-mode: vertical-rl;
