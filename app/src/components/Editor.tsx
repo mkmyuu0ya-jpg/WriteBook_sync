@@ -197,7 +197,7 @@ function insertTextAtSelection(element: HTMLElement, text: string): string {
 
 /** 加筆修正モードのエディタ（CodeMirror 6）。 */
 const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startLine, onChange, vertical }, ref) {
-  const hostRef = useRef<HTMLDivElement>(null);
+  const codeMirrorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const verticalInputRef = useRef<HTMLDivElement>(null);
   const previousVerticalRef = useRef(vertical);
@@ -210,7 +210,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   verticalRef.current = vertical;
 
   useEffect(() => {
-    const host = hostRef.current;
+    const host = codeMirrorHostRef.current;
     if (!host) return;
     const state = EditorState.create({
       doc: initial,
@@ -442,7 +442,13 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   }, [verticalText]);
 
   return (
-    <div className={`ed-host${vertical ? ' ed-host-vertical' : ''}`} ref={hostRef}>
+    <div className="ed-host">
+      <div
+        ref={codeMirrorHostRef}
+        className="ed-cm-host"
+        hidden={vertical}
+        aria-hidden={vertical}
+      />
       <div
         ref={verticalInputRef}
         className="ed-vertical-input"
@@ -450,6 +456,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         role="textbox"
         aria-multiline="true"
         contentEditable={vertical}
+        hidden={!vertical}
         suppressContentEditableWarning
         onInput={(event) => {
           const previous = verticalText;
