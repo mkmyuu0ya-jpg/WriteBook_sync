@@ -79,7 +79,6 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-  max-height: var(--editor-host-max-height, 100%);
   background: var(--bg);
 }
 .ed-cm-host {

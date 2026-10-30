@@ -17,8 +17,6 @@ export default function EditPage() {
   const [lineInput, setLineInput] = useState('1');
   const [vertical, setVertical] = useState(false);
   const editor = useRef<EditorHandle>(null);
-  const screen = useRef<HTMLDivElement>(null);
-  const toolbar = useRef<HTMLDivElement>(null);
   const latest = useRef('');
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
@@ -36,31 +34,6 @@ export default function EditPage() {
     // 開いたときの 1 回だけ読む
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
-
-  useEffect(() => {
-    if (!init) return;
-    const updateEditorHeight = () => {
-      const viewport = window.visualViewport;
-      const screenElement = screen.current;
-      const toolbarElement = toolbar.current;
-      if (!screenElement || !toolbarElement) return;
-      const visibleHeight = viewport?.height ?? window.innerHeight;
-      const toolbarBottom = toolbarElement.getBoundingClientRect().bottom;
-      screenElement.style.setProperty(
-        '--editor-host-max-height',
-        `${Math.max(0, visibleHeight - toolbarBottom)}px`,
-      );
-    };
-    updateEditorHeight();
-    window.visualViewport?.addEventListener('resize', updateEditorHeight);
-    window.visualViewport?.addEventListener('scroll', updateEditorHeight);
-    window.addEventListener('resize', updateEditorHeight);
-    return () => {
-      window.visualViewport?.removeEventListener('resize', updateEditorHeight);
-      window.visualViewport?.removeEventListener('scroll', updateEditorHeight);
-      window.removeEventListener('resize', updateEditorHeight);
-    };
-  }, [init]);
 
   const flush = useCallback(async () => {
     window.clearTimeout(timer.current);
@@ -116,8 +89,8 @@ export default function EditPage() {
     </button>
   );
   return (
-    <div className="ed" ref={screen}>
-      <div className="ed-bar" ref={toolbar}>
+    <div className="ed">
+      <div className="ed-bar">
         <button
           onClick={async () => {
             const line = editor.current?.cursorLine() ?? 0;

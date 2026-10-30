@@ -183,9 +183,6 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
       verticalUndoRef.current = [];
       verticalRedoRef.current = [];
       previousVerticalRef.current = true;
-      requestAnimationFrame(() => {
-        input.focus();
-      });
       return;
     }
 
@@ -384,8 +381,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
           ref={verticalPreviewRef}
           className="ed-vertical-preview"
           aria-hidden="true"
-          onPointerDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             const input = verticalInputRef.current;
             const preview = verticalPreviewRef.current;
             if (!input || !preview) return;
