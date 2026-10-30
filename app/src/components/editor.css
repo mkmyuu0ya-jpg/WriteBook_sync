@@ -53,6 +53,24 @@
 .ed-bar button:focus-visible {
   outline: 2px solid var(--ac);
 }
+.ed-line-jump {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 0;
+  font: inherit;
+}
+.ed-line-jump input {
+  box-sizing: border-box;
+  width: 4.5rem;
+  min-height: 32px;
+  padding: 3px 5px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 16px system-ui, 'Yu Gothic UI', sans-serif;
+}
 .ed-state {
   margin-left: auto;
   color: var(--ac);

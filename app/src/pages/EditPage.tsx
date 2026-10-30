@@ -14,6 +14,7 @@ export default function EditPage() {
   const [init, setInit] = useState<{ body: string; start?: number } | null>(null);
   const [save, setSave] = useState<Save>('saved');
   const [note, setNote] = useState('');
+  const [lineInput, setLineInput] = useState('1');
   const editor = useRef<EditorHandle>(null);
   const editorScreen = useRef<HTMLDivElement>(null);
   const latest = useRef('');
@@ -28,6 +29,7 @@ export default function EditPage() {
       latest.current = body;
       const q = params.get('line');
       setInit({ body, start: q === null ? undefined : Number(q) });
+      setLineInput(String((q === null ? 0 : Number(q)) + 1));
     })();
     // 開いたときの 1 回だけ読む
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,6 +79,20 @@ export default function EditPage() {
     [flush],
   );
 
+  const jumpToLine = () => {
+    const requestedLine = Number(lineInput);
+    const totalLines = latest.current.split(/\r?\n/).length;
+    if (!Number.isInteger(requestedLine) || requestedLine < 1 || requestedLine > totalLines) {
+      setNote(`1〜${totalLines}の行番号を入力してください`);
+      return;
+    }
+    const targetLine = editor.current?.jumpToLine(requestedLine);
+    if (targetLine !== undefined) {
+      setLineInput(String(targetLine));
+      setNote(`${targetLine}行目へ移動しました`);
+    }
+  };
+
   // 画面を離れる・隠れるときにも保存する
   useEffect(() => {
     const onHide = () => {
@@ -114,6 +130,26 @@ export default function EditPage() {
         {btn('ルビ', () => editor.current?.ruby())}
         {btn('元に戻す', () => editor.current?.undo())}
         {btn('やり直し', () => editor.current?.redo())}
+        <form
+          className="ed-line-jump"
+          onSubmit={(event) => {
+            event.preventDefault();
+            jumpToLine();
+          }}
+        >
+          <label htmlFor="ed-line-input">行</label>
+          <input
+            id="ed-line-input"
+            type="number"
+            min="1"
+            max={latest.current.split(/\r?\n/).length}
+            inputMode="numeric"
+            value={lineInput}
+            onChange={(event) => setLineInput(event.target.value)}
+            aria-label="移動先の本文行"
+          />
+          <button type="submit" onMouseDown={(event) => event.preventDefault()}>移動</button>
+        </form>
         {btn('本文をコピー', async () => {
           await navigator.clipboard.writeText(latest.current);
           setNote('コピーしました');

@@ -40,6 +40,8 @@ export type EditorHandle = {
   redo: () => void;
   /** カーソルのある行（0 始まり） */
   cursorLine: () => number;
+  /** 1 始まりの本文行へ移動し、実際に移動した行を返す */
+  jumpToLine: (line: number) => number;
   focus: () => void;
 };
 
@@ -109,6 +111,17 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
       cursorLine: () => {
         const v = viewRef.current;
         return v ? v.state.doc.lineAt(v.state.selection.main.head).number - 1 : 0;
+      },
+      jumpToLine: (line: number) => {
+        const v = viewRef.current;
+        if (!v) return 1;
+        const targetLine = Math.min(Math.max(Math.trunc(line), 1), v.state.doc.lines);
+        const pos = v.state.doc.line(targetLine).from;
+        v.dispatch({
+          selection: { anchor: pos },
+          effects: EditorView.scrollIntoView(pos, { y: 'start' }),
+        });
+        return targetLine;
       },
       focus: () => viewRef.current?.focus(),
     };

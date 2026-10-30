@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { pages as splitPages, parse, type Block, type Inline } from '../lib/parser/pixiv';
 import { formatProofreadingNotes, type ProofreadingNote } from '../lib/reader/annotations';
 import { fitFontSize, pageMetrics } from '../lib/reader/layout';
+import { pageIndexForLine } from '../lib/reader/lineNavigation';
 import { useReaderSettings } from '../stores/readerSettings';
 import './reader.css';
 
@@ -93,12 +94,6 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-function pageForLine(bookPages: Block[][], line: number | undefined): number {
-  if (line === undefined) return 0;
-  const index = bookPages.findIndex((page) => page.some((block) => block.line >= line));
-  return index < 0 ? bookPages.length - 1 : index;
-}
-
 /** 閲覧モード：[newpage] 単位でページを切り替え、ページ内は必要に応じてスクロールする。 */
 export default function Reader({
   source,
@@ -123,7 +118,9 @@ export default function Reader({
   const { vert, fs, update } = useReaderSettings();
   const blocks = useMemo(() => parse(source), [source]);
   const bookPages = useMemo(() => splitPages(blocks), [blocks]);
-  const [pageIndex, setPageIndex] = useState(() => pageForLine(bookPages, startLine));
+  const [pageIndex, setPageIndex] = useState(() => pageIndexForLine(bookPages, startLine));
+  const [lineInput, setLineInput] = useState(String((startLine ?? 0) + 1));
+  const [lineJumpMessage, setLineJumpMessage] = useState('');
   const [annotations, setAnnotations] = useState<ProofreadingNote[]>([]);
   const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
   const [annotationText, setAnnotationText] = useState('');
@@ -211,7 +208,7 @@ export default function Reader({
     inputRef.current = { source, startLine };
     startRef.current = startLine;
     resetOffsetRef.current = true;
-    setPageIndex(pageForLine(bookPages, startLine));
+    setPageIndex(pageIndexForLine(bookPages, startLine));
   }, [bookPages, source, startLine]);
 
   useEffect(() => {
@@ -291,6 +288,26 @@ export default function Reader({
     setPageIndex(nextPage);
   }, [bookPages.length, currentPageIndex]);
 
+  const jumpToLine = () => {
+    const requestedLine = Number(lineInput);
+    const totalLines = source.split(/\r?\n/).length;
+    if (!Number.isInteger(requestedLine) || requestedLine < 1 || requestedLine > totalLines) {
+      setLineJumpMessage(`1〜${totalLines}の行番号を入力してください`);
+      return;
+    }
+
+    const line = requestedLine - 1;
+    const nextPage = pageIndexForLine(bookPages, line);
+    const targetLine = bookPages[nextPage]?.find((block) => block.line >= line)?.line;
+    startRef.current = targetLine ?? line;
+    resetOffsetRef.current = true;
+    setTextSelection(null);
+    setLineInput(String((targetLine ?? line) + 1));
+    setLineJumpMessage(`${(targetLine ?? line) + 1}行目へ移動しました`);
+    if (nextPage === currentPageIndex) relayout();
+    else setPageIndex(nextPage);
+  };
+
   const addAnnotation = () => {
     if (!textSelection || !annotationText.trim()) return;
     setAnnotations((current) => [
@@ -354,8 +371,29 @@ export default function Reader({
         <button onClick={() => update({ fs: Math.min(36, fs + 2) })}>A＋</button>
         <button onClick={() => goToPage(currentPageIndex - 1)} disabled={currentPageIndex === 0}>前</button>
         <button onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex >= bookPages.length - 1}>次</button>
+        <form
+          className="rd-line-jump"
+          onSubmit={(event) => {
+            event.preventDefault();
+            jumpToLine();
+          }}
+        >
+          <label htmlFor="rd-line-input">行</label>
+          <input
+            id="rd-line-input"
+            type="number"
+            min="1"
+            max={source.split(/\r?\n/).length}
+            inputMode="numeric"
+            value={lineInput}
+            onChange={(event) => setLineInput(event.target.value)}
+            aria-label="移動先の本文行"
+          />
+          <button type="submit">移動</button>
+        </form>
         <span className="rd-ind" aria-live="polite">{currentPageIndex + 1} / {bookPages.length} ページ</span>
       </div>
+      {lineJumpMessage && <span className="rd-line-jump-message" role="status">{lineJumpMessage}</span>}
       {proofreading && (
         <div className="rd-proofreading" aria-label="校正メモ">
           {textSelection && (
