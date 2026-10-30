@@ -4,11 +4,6 @@
   --bar: #e6e9ee;
   --line: #aab2c0;
   --ac: #2b5d8a;
-  --chap: #8a3b12;
-  --np: #2b5d8a;
-  --rb: #6b3fa0;
-  --format: #8a3b12;
-  --link: #176b48;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -29,11 +24,6 @@
     --bar: #1f2530;
     --line: #4a5262;
     --ac: #8fb8e0;
-    --chap: #f0a070;
-    --np: #8fb8e0;
-    --rb: #c9a8f0;
-    --format: #f0a070;
-    --link: #78d6a8;
   }
 }
 .ed-bar {
@@ -103,6 +93,34 @@
   line-height: 1.9;
   padding: 8px 12px;
 }
+.ed-host-vertical > .cm-editor {
+  display: none;
+}
+.ed-vertical-input {
+  display: none;
+}
+.ed-host-vertical .ed-vertical-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: auto;
+  background: transparent;
+  color: inherit;
+  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  font-size: 17px;
+  line-height: 1.9;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  caret-color: var(--fg);
+  -webkit-overflow-scrolling: touch;
+}
 .ed-host .cm-cursor {
   border-left-color: var(--fg);
 }
@@ -117,24 +135,9 @@
   }
 }
 .ed-host .tag-chapter {
-  color: var(--chap);
   font-weight: 700;
 }
 .ed-host .tag-newpage {
-  color: var(--np);
   font-weight: 700;
-  background: color-mix(in srgb, var(--np) 12%, transparent);
-}
-.ed-host .tag-ruby {
-  color: var(--rb);
-}
-.ed-host .tag-format,
-.ed-host .tag-emphasis {
-  color: var(--format);
-}
-.ed-host .tag-link {
-  color: var(--link);
-}
-.ed-host .tag-image {
-  color: var(--np);
+  background: color-mix(in srgb, var(--ac) 12%, transparent);
 }

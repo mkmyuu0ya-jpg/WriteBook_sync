@@ -15,6 +15,7 @@ export default function EditPage() {
   const [save, setSave] = useState<Save>('saved');
   const [note, setNote] = useState('');
   const [lineInput, setLineInput] = useState('1');
+  const [vertical, setVertical] = useState(false);
   const editor = useRef<EditorHandle>(null);
   const editorScreen = useRef<HTMLDivElement>(null);
   const latest = useRef('');
@@ -125,6 +126,13 @@ export default function EditPage() {
         >
           編集を終える
         </button>
+        <button
+          aria-pressed={vertical}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setVertical((current) => !current)}
+        >
+          {vertical ? '横書きに切替' : '縦書きに切替'}
+        </button>
         {btn('見出し', () => editor.current?.chapter())}
         {btn('改ページ', () => editor.current?.newpage())}
         {btn('ルビ', () => editor.current?.ruby())}
@@ -166,7 +174,7 @@ export default function EditPage() {
           {note || LABEL[save]}
         </span>
       </div>
-      <Editor ref={editor} initial={init.body} startLine={init.start} onChange={onChange} />
+      <Editor ref={editor} initial={init.body} startLine={init.start} onChange={onChange} vertical={vertical} />
     </div>
   );
 }
