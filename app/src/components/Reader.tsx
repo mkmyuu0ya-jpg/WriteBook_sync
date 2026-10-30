@@ -1,8 +1,63 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pages as splitPages, parse, type Block, type Inline } from '../lib/parser/pixiv';
+import { formatProofreadingNotes, type ProofreadingNote } from '../lib/reader/annotations';
 import { fitFontSize, pageMetrics } from '../lib/reader/layout';
 import { useReaderSettings } from '../stores/readerSettings';
 import './reader.css';
+
+type TextSelection = Omit<ProofreadingNote, 'id' | 'pageIndex' | 'comment'>;
+type HighlightRegistryApi = {
+  set: (name: string, value: object) => void;
+  delete: (name: string) => boolean;
+};
+type HighlightConstructor = new (...ranges: Range[]) => object;
+
+const PROOFREADING_HIGHLIGHT = 'writebook-proofreading';
+
+function getBlockForNode(node: Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest<HTMLElement>('[data-line]') ?? null;
+}
+
+function offsetWithinBlock(block: HTMLElement, node: Node, offset: number): number {
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  range.setEnd(node, offset);
+  return range.toString().length;
+}
+
+function rangeForOffsets(block: HTMLElement, from: number, to: number): Range | null {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  let textOffset = 0;
+  let start: { node: Node; offset: number } | undefined;
+  let end: { node: Node; offset: number } | undefined;
+
+  while (node) {
+    const length = node.textContent?.length ?? 0;
+    if (!start && from <= textOffset + length) {
+      start = { node, offset: from - textOffset };
+    }
+    if (to <= textOffset + length) {
+      end = { node, offset: to - textOffset };
+      break;
+    }
+    textOffset += length;
+    node = walker.nextNode();
+  }
+
+  if (!start || !end) return null;
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  return range;
+}
+
+function getHighlightApi(): { registry: HighlightRegistryApi; Highlight: HighlightConstructor } | null {
+  const registry = (CSS as typeof CSS & { highlights?: HighlightRegistryApi }).highlights;
+  const Highlight = (window as Window & { Highlight?: HighlightConstructor }).Highlight;
+  return registry && Highlight ? { registry, Highlight } : null;
+}
 
 function Inlines({ items }: { items: Inline[] }) {
   return (
@@ -52,6 +107,7 @@ export default function Reader({
   onEdit,
   onLine,
   notice,
+  proofreading = false,
 }: {
   source: string;
   /** 開いたときに表示する行（読書位置・目次からの移動） */
@@ -62,11 +118,17 @@ export default function Reader({
   /** スクロール位置に応じた行を知らせる（読書位置の保存用） */
   onLine?: (line: number) => void;
   notice?: string;
+  proofreading?: boolean;
 }) {
   const { vert, fs, update } = useReaderSettings();
   const blocks = useMemo(() => parse(source), [source]);
   const bookPages = useMemo(() => splitPages(blocks), [blocks]);
   const [pageIndex, setPageIndex] = useState(() => pageForLine(bookPages, startLine));
+  const [annotations, setAnnotations] = useState<ProofreadingNote[]>([]);
+  const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
+  const [annotationText, setAnnotationText] = useState('');
+  const [annotationMessage, setAnnotationMessage] = useState('');
+  const nextAnnotationId = useRef(1);
   const currentPageIndex = Math.min(pageIndex, bookPages.length - 1);
   const currentBlocks = bookPages[currentPageIndex] ?? [];
 
@@ -153,6 +215,55 @@ export default function Reader({
   }, [bookPages, source, startLine]);
 
   useEffect(() => {
+    if (!proofreading) return;
+    const tx = txRef.current;
+    if (!tx) return;
+    const onSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+      const range = selection.getRangeAt(0);
+      if (!tx.contains(range.commonAncestorContainer)) return;
+      const startBlock = getBlockForNode(range.startContainer);
+      const endBlock = getBlockForNode(range.endContainer);
+      if (!startBlock || startBlock !== endBlock || !tx.contains(startBlock)) {
+        setTextSelection(null);
+        return;
+      }
+      const from = offsetWithinBlock(startBlock, range.startContainer, range.startOffset);
+      const to = offsetWithinBlock(startBlock, range.endContainer, range.endOffset);
+      const quote = range.toString().replace(/\s+/g, ' ').trim();
+      if (!quote || to <= from) {
+        setTextSelection(null);
+        return;
+      }
+      setTextSelection({ line: Number(startBlock.dataset.line), from, to, quote });
+      setAnnotationMessage('');
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [proofreading, currentPageIndex]);
+
+  useLayoutEffect(() => {
+    if (!proofreading) return;
+    const api = getHighlightApi();
+    const tx = txRef.current;
+    if (!api || !tx) return;
+    const ranges = annotations
+      .filter((note) => note.pageIndex === currentPageIndex)
+      .flatMap((note) => {
+        const block = tx.querySelector<HTMLElement>(`[data-line="${note.line}"]`);
+        const range = block ? rangeForOffsets(block, note.from, note.to) : null;
+        return range ? [range] : [];
+      });
+
+    if (ranges.length > 0) api.registry.set(PROOFREADING_HIGHLIGHT, new api.Highlight(...ranges));
+    else api.registry.delete(PROOFREADING_HIGHLIGHT);
+    return () => {
+      api.registry.delete(PROOFREADING_HIGHLIGHT);
+    };
+  }, [annotations, currentPageIndex, currentBlocks, proofreading]);
+
+  useEffect(() => {
     const stage = stageRef.current;
     const vp = vpRef.current;
     if (!stage || !vp) return;
@@ -176,8 +287,47 @@ export default function Reader({
     if (nextPage === currentPageIndex) return;
     startRef.current = undefined;
     resetOffsetRef.current = true;
+    setTextSelection(null);
     setPageIndex(nextPage);
   }, [bookPages.length, currentPageIndex]);
+
+  const addAnnotation = () => {
+    if (!textSelection || !annotationText.trim()) return;
+    setAnnotations((current) => [
+      ...current,
+      {
+        id: nextAnnotationId.current++,
+        pageIndex: currentPageIndex,
+        line: textSelection.line,
+        from: textSelection.from,
+        to: textSelection.to,
+        quote: textSelection.quote,
+        comment: annotationText.trim(),
+      },
+    ]);
+    setTextSelection(null);
+    setAnnotationText('');
+    setAnnotationMessage('指摘を一時保存しました');
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const copyAnnotations = async () => {
+    try {
+      await navigator.clipboard.writeText(formatProofreadingNotes(annotations));
+      setAnnotationMessage('指摘をコピーしました');
+    } catch (error) {
+      console.error('Could not copy proofreading notes:', error);
+      setAnnotationMessage('コピーできませんでした。ブラウザのクリップボード権限を確認してください。');
+    }
+  };
+
+  const goToAnnotation = (note: ProofreadingNote) => {
+    startRef.current = note.line;
+    resetOffsetRef.current = true;
+    setTextSelection(null);
+    if (note.pageIndex === currentPageIndex) relayout();
+    else setPageIndex(note.pageIndex);
+  };
 
   const turnFromTap = (clientX: number) => {
     const stage = stageRef.current;
@@ -206,6 +356,57 @@ export default function Reader({
         <button onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex >= bookPages.length - 1}>次</button>
         <span className="rd-ind" aria-live="polite">{currentPageIndex + 1} / {bookPages.length} ページ</span>
       </div>
+      {proofreading && (
+        <div className="rd-proofreading" aria-label="校正メモ">
+          {textSelection && (
+            <div className="rd-note-compose">
+              <span className="rd-note-quote">「{textSelection.quote}」</span>
+              <input
+                className="rd-note-input"
+                aria-label="指摘内容"
+                value={annotationText}
+                onChange={(event) => setAnnotationText(event.target.value)}
+                placeholder="指摘を入力"
+              />
+              <button onClick={addAnnotation} disabled={!annotationText.trim()}>付箋を追加</button>
+            </div>
+          )}
+          <div className="rd-note-actions">
+            <span className="rd-note-message" role="status">{annotationMessage || '同じ段落内の文字を選択して付箋を追加'}</span>
+            <button onClick={() => void copyAnnotations()} disabled={annotations.length === 0}>指摘をコピー</button>
+            <button
+              onClick={() => {
+                if (!window.confirm('この画面で作成した指摘をすべて削除しますか？')) return;
+                setAnnotations([]);
+                setAnnotationMessage('指摘をすべて削除しました');
+              }}
+              disabled={annotations.length === 0}
+            >
+              全削除
+            </button>
+          </div>
+          {annotations.length > 0 && (
+            <details className="rd-note-list">
+              <summary>指摘一覧（{annotations.length}）</summary>
+              <ol>
+                {annotations.map((note) => (
+                  <li key={note.id}>
+                    <button className="rd-note-link" onClick={() => goToAnnotation(note)}>
+                      {note.pageIndex + 1}ページ・{note.line + 1}行: 「{note.quote}」— {note.comment}
+                    </button>
+                    <button
+                      aria-label="この指摘を削除"
+                      onClick={() => setAnnotations((current) => current.filter((item) => item.id !== note.id))}
+                    >
+                      削除
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </div>
+      )}
       <div
         className={`rd-stage ${vert ? 'v-scroll' : 'h-scroll'}`}
         ref={stageRef}
@@ -214,6 +415,7 @@ export default function Reader({
         tabIndex={0}
         onClick={(event) => {
           if (event.target instanceof Element && event.target.closest('button')) return;
+          if (window.getSelection()?.toString().trim()) return;
           turnFromTap(event.clientX);
         }}
         onKeyDown={(event) => {

@@ -26,5 +26,5 @@ export default function PublicReadPage() {
     return <main className="p-6 text-sm text-rose-700 dark:text-rose-300" role="alert">{error}</main>;
   }
   if (!content) return <main className="p-6 text-sm">公開本文を読み込み中…</main>;
-  return <Reader source={content.body} notice={`校正用共有ページ・更新 ${new Date(content.updatedAt).toLocaleString('ja-JP')}`} />;
+  return <Reader source={content.body} proofreading notice={`校正用共有ページ・更新 ${new Date(content.updatedAt).toLocaleString('ja-JP')}`} />;
 }

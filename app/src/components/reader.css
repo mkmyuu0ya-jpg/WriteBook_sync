@@ -52,6 +52,77 @@
   color: var(--ac);
   font-weight: 600;
 }
+.rd-proofreading {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 30dvh;
+  overflow: auto;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  font: 13px system-ui, 'Yu Gothic UI', sans-serif;
+}
+.rd-proofreading button {
+  flex: none;
+  color: var(--fg);
+  background: var(--bar);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.rd-proofreading button:disabled {
+  opacity: 0.5;
+}
+.rd-note-compose,
+.rd-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.rd-note-quote {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.rd-note-input {
+  box-sizing: border-box;
+  min-width: 10rem;
+  flex: 1;
+  font: 16px system-ui, 'Yu Gothic UI', sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.rd-note-message {
+  flex: 1;
+  min-width: 12rem;
+  opacity: 0.75;
+}
+.rd-note-list summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.rd-note-list ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0;
+  padding-left: 1.5rem;
+}
+.rd-note-list li {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+}
+.rd-note-link {
+  flex: 1 !important;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
 .rd-stage {
   flex: 1;
   min-height: 0;
@@ -99,6 +170,10 @@
 .rd-tx .np {
   display: block;
 }
+::highlight(writebook-proofreading) {
+  background-color: #ffe66d;
+  color: #1d2330;
+}
 @media (max-width: 480px) {
   .rd-bar {
     gap: 4px;
@@ -107,5 +182,8 @@
   .rd-bar button {
     min-height: 34px;
     padding: 5px 8px;
+  }
+  .rd-proofreading {
+    max-height: 35dvh;
   }
 }
