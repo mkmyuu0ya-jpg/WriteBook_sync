@@ -35,6 +35,22 @@ describe('repo', () => {
     expect(await repo.getBody(b.id)).toBe('y');
     expect((await repo.getBook(b.id))!.updatedAt > b.updatedAt).toBe(true);
   });
+  it('タイトル・本文を検索し、本文の行番号を返す。ゴミ箱は検索しない', async () => {
+    const s = await repo.addSeries('連載');
+    const bodyMatch = await repo.addBook(s.id, '第一話', '静かな夜\n夜明けの町');
+    const titleMatch = await repo.addBook(s.id, '夜明けの記録');
+    const trashed = await repo.addBook(s.id, '夜明けの削除本');
+    await repo.trashBook(trashed.id);
+
+    expect(await repo.searchBooks(s.id, '夜明け')).toMatchObject([
+      { book: bodyMatch, seriesTitle: '連載', matchedIn: 'body', line: 1 },
+      { book: titleMatch, matchedIn: 'title' },
+    ]);
+    expect(await repo.searchBooks(s.id, '  ')).toEqual([]);
+    const otherSeries = await repo.addSeries('別の連載');
+    await repo.addBook(otherSeries.id, '夜明けの別作品', '夜明け');
+    expect(await repo.searchBooks(s.id, '夜明け')).toHaveLength(2);
+  });
   it('状態を変える。投稿の記録は、渡さなければ残る', async () => {
     const s = await repo.addSeries('S');
     const b = await repo.addBook(s.id, 'A');

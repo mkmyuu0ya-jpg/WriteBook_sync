@@ -1,4 +1,5 @@
 import { ulid } from 'ulid';
+import { searchBooks as findBooks, type BookSearchResult } from '../search/books';
 import type { BookDB } from './db';
 import type { Book, PixivRecord, Progress, Series, Snapshot, Status } from './types';
 
@@ -28,6 +29,18 @@ export function createRepo(db: BookDB, now: () => string = () => new Date().toIS
     async listBooks(seriesId?: string): Promise<Book[]> {
       const all = seriesId ? await db.books.where('seriesId').equals(seriesId).toArray() : await db.books.toArray();
       return all.filter((b) => !b.trashedAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    },
+
+    async searchBooks(seriesId: string, query: string): Promise<BookSearchResult[]> {
+      if (!query.trim()) return [];
+      const [books, series] = await Promise.all([self.listBooks(seriesId), db.series.get(seriesId)]);
+      const bodies = await db.bodies.bulkGet(books.map((book) => book.id));
+      return findBooks(
+        books,
+        bodies.filter((body): body is NonNullable<typeof body> => body !== undefined),
+        series ? [series] : [],
+        query,
+      );
     },
 
     async listTrashed(): Promise<Book[]> {
