@@ -249,6 +249,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
     if (!vertical) return;
     const preview = verticalPreviewRef.current;
     const caret = verticalCaretRef.current;
+    const input = verticalInputRef.current;
     if (preview && caret) {
       const previewRect = preview.getBoundingClientRect();
       const caretRect = caret.getBoundingClientRect();
@@ -259,6 +260,11 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         preview.scrollLeft += caretRect.right - previewRect.right + horizontalMargin;
       }
       preview.scrollTop = 0;
+      if (input) {
+        const visibleCaretRect = caret.getBoundingClientRect();
+        input.style.left = `${visibleCaretRect.left}px`;
+        input.style.top = `${visibleCaretRect.top}px`;
+      }
     }
   }, [vertical, verticalText, verticalSelection]);
 
@@ -415,6 +421,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         onInput={(event) => {
           const previous = verticalText;
           const input = event.currentTarget;
+          input.scrollTop = 0;
+          input.scrollLeft = 0;
           const next = input.value;
           if (next === previous) return;
           const composing = isComposingRef.current || (event.nativeEvent as InputEvent).isComposing;
@@ -434,6 +442,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         onCompositionEnd={(event) => {
           isComposingRef.current = false;
           const input = event.currentTarget;
+          input.scrollTop = 0;
+          input.scrollLeft = 0;
           const next = input.value;
           const previous = compositionStartTextRef.current;
           if (next !== previous) {
@@ -452,6 +462,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         }}
         onSelect={(event) => {
           const input = event.currentTarget;
+          input.scrollTop = 0;
+          input.scrollLeft = 0;
           setVerticalSelection({ start: input.selectionStart, end: input.selectionEnd });
         }}
         onPaste={(event) => {
@@ -462,6 +474,11 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
           const to = input.selectionEnd;
           const next = input.value.slice(0, from) + pasted + input.value.slice(to);
           updateVerticalText(next, from + pasted.length);
+        }}
+        onScroll={(event) => {
+          const input = event.currentTarget;
+          if (input.scrollTop !== 0) input.scrollTop = 0;
+          if (input.scrollLeft !== 0) input.scrollLeft = 0;
         }}
         spellCheck={false}
       />
