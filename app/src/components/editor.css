@@ -111,6 +111,7 @@
   overflow: auto;
   background: transparent;
   color: inherit;
+  direction: ltr;
   font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
   font-size: 17px;
   line-height: 1.9;
@@ -119,6 +120,9 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   caret-color: var(--fg);
+  cursor: text;
+  -webkit-text-size-adjust: 100%;
+  user-select: text;
   -webkit-overflow-scrolling: touch;
 }
 .ed-host .cm-cursor {

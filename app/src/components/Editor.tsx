@@ -87,11 +87,119 @@ type Props = {
   onChange: (text: string) => void;
 };
 
+function getEditableText(element: HTMLElement): string {
+  let text = '';
+  const append = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.nodeValue ?? '';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const child = node as Element;
+    if (child.tagName === 'BR') {
+      text += '\n';
+      return;
+    }
+    const isBlock = /^(DIV|LI|P|PRE|BLOCKQUOTE)$/.test(child.tagName);
+    if (isBlock && text.length > 0 && !text.endsWith('\n')) text += '\n';
+    for (const nested of child.childNodes) append(nested);
+  };
+  for (const child of element.childNodes) append(child);
+  return text.replace(/\r\n?/g, '\n');
+}
+
+function getTextOffset(element: HTMLElement, node: Node, offset: number): number {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.setEnd(node, offset);
+  const content = document.createElement('div');
+  content.append(range.cloneContents());
+  return getEditableText(content).length;
+}
+
+function getSelectionOffsets(element: HTMLElement): { anchor: number; head: number } {
+  const selection = window.getSelection();
+  const anchorNode = selection?.anchorNode;
+  const focusNode = selection?.focusNode;
+  if (!selection || !anchorNode || !focusNode || !element.contains(anchorNode) || !element.contains(focusNode)) {
+    const end = getEditableText(element).length;
+    return { anchor: end, head: end };
+  }
+  return {
+    anchor: getTextOffset(element, anchorNode, selection.anchorOffset),
+    head: getTextOffset(element, focusNode, selection.focusOffset),
+  };
+}
+
+function setSelectionOffsets(element: HTMLElement, anchor: number, head = anchor): void {
+  const locate = (offset: number): { node: Node; offset: number } => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let remaining = Math.max(0, offset);
+    let last: Node | null = null;
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      last = node;
+      const length = node.textContent?.length ?? 0;
+      if (remaining <= length) return { node, offset: remaining };
+      remaining -= length;
+    }
+    return last
+      ? { node: last, offset: last.textContent?.length ?? 0 }
+      : { node: element, offset: 0 };
+  };
+
+  const selection = window.getSelection();
+  if (!selection) return;
+  const anchorPosition = locate(anchor);
+  const headPosition = locate(head);
+  selection.removeAllRanges();
+  if (typeof selection.setBaseAndExtent === 'function') {
+    selection.setBaseAndExtent(anchorPosition.node, anchorPosition.offset, headPosition.node, headPosition.offset);
+    return;
+  }
+  const range = document.createRange();
+  const forward = anchor <= head;
+  const start = forward ? anchorPosition : headPosition;
+  const end = forward ? headPosition : anchorPosition;
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  selection.addRange(range);
+  if (!forward && typeof selection.extend === 'function') {
+    selection.collapse(end.node, end.offset);
+    selection.extend(start.node, start.offset);
+  }
+}
+
+function insertTextAtSelection(element: HTMLElement, text: string): string {
+  const selection = window.getSelection();
+  const range = document.createRange();
+  const selectedRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (selectedRange && element.contains(selectedRange.commonAncestorContainer)) {
+    range.setStart(selectedRange.startContainer, selectedRange.startOffset);
+    range.setEnd(selectedRange.endContainer, selectedRange.endOffset);
+  } else {
+    range.selectNodeContents(element);
+    range.collapse(false);
+  }
+  range.deleteContents();
+  const inserted = document.createTextNode(text);
+  range.insertNode(inserted);
+  range.setStartAfter(inserted);
+  range.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  const next = getEditableText(element);
+  const caret = getTextOffset(element, range.startContainer, range.startOffset);
+  element.textContent = next;
+  setSelectionOffsets(element, caret);
+  return next;
+}
+
 /** 加筆修正モードのエディタ（CodeMirror 6）。 */
 const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startLine, onChange, vertical }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const verticalInputRef = useRef<HTMLTextAreaElement>(null);
+  const verticalInputRef = useRef<HTMLDivElement>(null);
   const previousVerticalRef = useRef(vertical);
   const verticalUndoRef = useRef<string[]>([]);
   const verticalRedoRef = useRef<string[]>([]);
@@ -134,8 +242,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   useLayoutEffect(() => {
     if (previousVerticalRef.current === vertical) return;
     const view = viewRef.current;
-    const textarea = verticalInputRef.current;
-    if (!view || !textarea) return;
+    const input = verticalInputRef.current;
+    if (!view || !input) return;
 
     if (vertical) {
       const { head, anchor } = view.state.selection.main;
@@ -145,14 +253,14 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
       verticalRedoRef.current = [];
       previousVerticalRef.current = true;
       requestAnimationFrame(() => {
-        textarea.setSelectionRange(Math.min(anchor, head), Math.max(anchor, head), anchor <= head ? 'forward' : 'backward');
-        textarea.focus();
+        setSelectionOffsets(input, anchor, head);
+        input.focus();
       });
       return;
     }
 
-    const { selectionStart, selectionEnd, selectionDirection } = textarea;
-    const text = textarea.value;
+    const { anchor, head } = getSelectionOffsets(input);
+    const text = getEditableText(input);
     const oldText = view.state.doc.toString();
     let prefix = 0;
     while (prefix < oldText.length && prefix < text.length && oldText[prefix] === text[prefix]) prefix += 1;
@@ -169,13 +277,19 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         insert: text.slice(prefix, text.length - suffix),
       },
       selection: {
-        anchor: selectionDirection === 'backward' ? selectionEnd : selectionStart,
-        head: selectionDirection === 'backward' ? selectionStart : selectionEnd,
+        anchor,
+        head,
       },
     });
     previousVerticalRef.current = false;
     view.focus();
   }, [vertical]);
+
+  useLayoutEffect(() => {
+    if (!vertical) return;
+    const input = verticalInputRef.current;
+    if (input && getEditableText(input) !== verticalText) input.textContent = verticalText;
+  }, [vertical, verticalText]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -193,24 +307,39 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
     return () => cancelAnimationFrame(frame);
   }, [vertical]);
 
+  const updateVerticalText = (nextText: string, selectionStart: number, selectionEnd = selectionStart) => {
+    verticalUndoRef.current = [...verticalUndoRef.current, verticalText].slice(-200);
+    verticalRedoRef.current = [];
+    setVerticalText(nextText);
+    onChangeRef.current(nextText);
+    requestAnimationFrame(() => {
+      const input = verticalInputRef.current;
+      if (!input) return;
+      if (getEditableText(input) !== nextText) input.textContent = nextText;
+      setSelectionOffsets(input, selectionStart, selectionEnd);
+      input.focus();
+    });
+  };
+
+  const insertVerticalText = (text: string) => {
+    const input = verticalInputRef.current;
+    if (!input) return;
+    const previous = verticalText;
+    const next = insertTextAtSelection(input, text);
+    if (next === previous) return;
+    verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
+    verticalRedoRef.current = [];
+    setVerticalText(next);
+    onChangeRef.current(next);
+  };
+
   useImperativeHandle(ref, () => {
-    const updateVerticalText = (nextText: string, selectionStart: number, selectionEnd = selectionStart) => {
-      verticalUndoRef.current = [...verticalUndoRef.current, verticalText].slice(-200);
-      verticalRedoRef.current = [];
-      setVerticalText(nextText);
-      onChangeRef.current(nextText);
-      requestAnimationFrame(() => {
-        const textarea = verticalInputRef.current;
-        if (!textarea) return;
-        textarea.setSelectionRange(selectionStart, selectionEnd);
-        textarea.focus();
-      });
-    };
     const apply = (make: (t: string, f: number, to: number) => Edit) => {
       if (verticalRef.current) {
-        const textarea = verticalInputRef.current;
-        if (!textarea) return;
-        const e = make(verticalText, textarea.selectionStart, textarea.selectionEnd);
+        const input = verticalInputRef.current;
+        if (!input) return;
+        const { anchor, head } = getSelectionOffsets(input);
+        const e = make(verticalText, Math.min(anchor, head), Math.max(anchor, head));
         const nextText = verticalText.slice(0, e.from) + e.insert + verticalText.slice(e.to);
         updateVerticalText(nextText, e.caret[0], e.caret[1]);
         return;
@@ -244,35 +373,52 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         if (!verticalRef.current) return viewRef.current && undo(viewRef.current);
         const previous = verticalUndoRef.current.pop();
         if (previous === undefined) return;
+        const input = verticalInputRef.current;
+        const selection = input ? getSelectionOffsets(input) : { anchor: previous.length, head: previous.length };
         verticalRedoRef.current.push(verticalText);
         setVerticalText(previous);
         onChangeRef.current(previous);
+        requestAnimationFrame(() => {
+          if (!input) return;
+          if (getEditableText(input) !== previous) input.textContent = previous;
+          setSelectionOffsets(input, Math.min(selection.anchor, previous.length), Math.min(selection.head, previous.length));
+          input.focus();
+        });
       },
       redo: () => {
         if (!verticalRef.current) return viewRef.current && redo(viewRef.current);
         const next = verticalRedoRef.current.pop();
         if (next === undefined) return;
+        const input = verticalInputRef.current;
+        const selection = input ? getSelectionOffsets(input) : { anchor: next.length, head: next.length };
         verticalUndoRef.current.push(verticalText);
         setVerticalText(next);
         onChangeRef.current(next);
+        requestAnimationFrame(() => {
+          if (!input) return;
+          if (getEditableText(input) !== next) input.textContent = next;
+          setSelectionOffsets(input, Math.min(selection.anchor, next.length), Math.min(selection.head, next.length));
+          input.focus();
+        });
       },
       cursorLine: () => {
         if (verticalRef.current) {
-          const textarea = verticalInputRef.current;
-          return textarea ? verticalText.slice(0, textarea.selectionStart).split(/\r?\n/).length - 1 : 0;
+          const input = verticalInputRef.current;
+          const { head } = input ? getSelectionOffsets(input) : { head: 0 };
+          return verticalText.slice(0, head).split(/\r?\n/).length - 1;
         }
         const v = viewRef.current;
         return v ? v.state.doc.lineAt(v.state.selection.main.head).number - 1 : 0;
       },
       jumpToLine: (line: number) => {
         if (verticalRef.current) {
-          const textarea = verticalInputRef.current;
-          if (!textarea) return 1;
+          const input = verticalInputRef.current;
+          if (!input) return 1;
           const lines = verticalText.split(/\r?\n/);
           const targetLine = Math.min(Math.max(Math.trunc(line), 1), lines.length);
           const pos = lines.slice(0, targetLine - 1).reduce((sum, item) => sum + item.length + 1, 0);
-          textarea.setSelectionRange(pos, pos);
-          textarea.focus();
+          setSelectionOffsets(input, pos);
+          input.focus();
           return targetLine;
         }
         const v = viewRef.current;
@@ -288,24 +434,42 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         });
         return targetLine;
       },
-      focus: () => viewRef.current?.focus(),
+      focus: () => {
+        if (verticalRef.current) verticalInputRef.current?.focus();
+        else viewRef.current?.focus();
+      },
     };
   }, [verticalText]);
 
   return (
     <div className={`ed-host${vertical ? ' ed-host-vertical' : ''}`} ref={hostRef}>
-      <textarea
+      <div
         ref={verticalInputRef}
         className="ed-vertical-input"
         aria-label="縦書き本文"
-        value={verticalText}
-        onChange={(event) => {
+        role="textbox"
+        aria-multiline="true"
+        contentEditable={vertical}
+        suppressContentEditableWarning
+        onInput={(event) => {
           const previous = verticalText;
-          const next = event.target.value;
+          const input = event.currentTarget;
+          const next = getEditableText(input);
+          const selection = getSelectionOffsets(input);
+          if (input.childElementCount > 0 || input.textContent !== next) {
+            input.textContent = next;
+            setSelectionOffsets(input, selection.anchor, selection.head);
+          }
+          if (next === previous) return;
           verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
           verticalRedoRef.current = [];
           setVerticalText(next);
           onChangeRef.current(next);
+        }}
+        onPaste={(event) => {
+          event.preventDefault();
+          const pasted = event.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+          insertVerticalText(pasted);
         }}
         spellCheck={false}
       />

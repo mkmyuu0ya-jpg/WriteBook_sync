@@ -21,7 +21,7 @@ npm run build      # 型チェック＋本番ビルド
 - `src/lib/data/` … 端末内のデータ（IndexedDB / Dexie）。型、DB、操作（repo）、状態、ハッシュ
 - `src/lib/sync/` … GitHub Data API、初回・継続同期、3者差分マージ、競合、commit履歴、Gist公開
 - `src/components/Reader.tsx` … 閲覧モード（縦書き／横書き、`[newpage]`単位ページ送り、ページ内スクロール、読書位置）
-- `src/components/Editor.tsx` … 加筆修正モードのエディタ（CodeMirror 6、記法の色分け）
+- `src/components/Editor.tsx` … 加筆修正モードのエディタ（横書きはCodeMirror 6、縦書きはプレーンテキスト編集領域）
 - `src/pages/` … 本棚、シリーズ、本の詳細、閲覧、加筆修正、履歴、ゴミ箱、同期設定、公開閲覧画面（HashRouter）
 - `src/stores/` … Zustand のストア（閲覧の設定、本棚のデータ）
 - `spikes/` … Phase 0 の検証用試作（アプリ本体とは無関係）
