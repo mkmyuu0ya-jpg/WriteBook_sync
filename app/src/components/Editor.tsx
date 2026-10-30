@@ -10,14 +10,41 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
-import { chapterEdit, newpageEdit, rubyEdit, type Edit } from '../lib/editor/notation';
+import {
+  boldEdit,
+  chapterEdit,
+  emphasisEdit,
+  italicEdit,
+  newpageEdit,
+  pageLinkEdit,
+  pixivImageEdit,
+  rubyEdit,
+  uploadedImageEdit,
+  urlLinkEdit,
+  type Edit,
+} from '../lib/editor/notation';
 import './editor.css';
 
 /** 記法（見出し・改ページ・ルビ）を色分けして、範囲が分かるようにする。 */
 const tags = new MatchDecorator({
-  regexp: /\[\[rb:[^\]\n]*\]\]|\[chapter:[^\]\n]*\]|\[newpage\]/g,
-  decoration: (m) =>
-    Decoration.mark({ class: m[0].startsWith('[[rb') ? 'tag-ruby' : m[0].startsWith('[chapter') ? 'tag-chapter' : 'tag-newpage' }),
+  regexp: /\[\[rb:[^\]\n]*\]\]|\[\[emphasismark:[^\]\n]*\]\]|\[\[jumpuri:[^\]\n]*\]\]|\[chapter:[^\]\n]*\]|\[newpage\]|\[(?:b|i):[^\]\n]*\]|\[(?:jump|pixivimage|uploadedimage):[^\]\n]*\]/g,
+  decoration: (m) => {
+    const tag = m[0];
+    const className = tag.startsWith('[[rb')
+      ? 'tag-ruby'
+      : tag.startsWith('[[emphasismark')
+        ? 'tag-emphasis'
+        : tag.startsWith('[[jumpuri') || tag.startsWith('[jump:')
+          ? 'tag-link'
+          : tag.startsWith('[chapter')
+            ? 'tag-chapter'
+            : tag === '[newpage]'
+              ? 'tag-newpage'
+              : tag.startsWith('[pixivimage:') || tag.startsWith('[uploadedimage:')
+                ? 'tag-image'
+                : 'tag-format';
+    return Decoration.mark({ class: className });
+  },
 });
 const tagPlugin = ViewPlugin.fromClass(
   class {
@@ -36,6 +63,13 @@ export type EditorHandle = {
   chapter: () => void;
   newpage: () => void;
   ruby: () => void;
+  bold: () => void;
+  italic: () => void;
+  emphasis: () => void;
+  pixivImage: () => void;
+  uploadedImage: () => void;
+  pageLink: () => void;
+  urlLink: () => void;
   undo: () => void;
   redo: () => void;
   /** カーソルのある行（0 始まり） */
@@ -106,6 +140,13 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
       chapter: () => apply(chapterEdit),
       newpage: () => apply(newpageEdit),
       ruby: () => apply(rubyEdit),
+      bold: () => apply(boldEdit),
+      italic: () => apply(italicEdit),
+      emphasis: () => apply(emphasisEdit),
+      pixivImage: () => apply(pixivImageEdit),
+      uploadedImage: () => apply(uploadedImageEdit),
+      pageLink: () => apply(pageLinkEdit),
+      urlLink: () => apply(urlLinkEdit),
       undo: () => viewRef.current && undo(viewRef.current),
       redo: () => viewRef.current && redo(viewRef.current),
       cursorLine: () => {

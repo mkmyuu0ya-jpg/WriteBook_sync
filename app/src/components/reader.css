@@ -190,6 +190,36 @@
 .rd-tx rt {
   font-size: 0.5em;
 }
+.rd-tx .rd-emphasis {
+  text-emphasis-position: over right;
+}
+.rd-tx .rd-page-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  color: #176b9b;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rd-tx .rd-page-link:disabled {
+  color: inherit;
+  opacity: 0.6;
+  cursor: default;
+}
+.rd-tx .rd-page-link:focus-visible {
+  outline: 2px solid #2b5d8a;
+  outline-offset: 2px;
+}
+.rd-tx .rd-illustration {
+  display: inline-block;
+  padding: 0.2em 0.5em;
+  border: 1px solid currentColor;
+  border-radius: 0.35em;
+  color: #2b5d8a;
+  font: 0.8em system-ui, sans-serif;
+}
 .rd-tx .np {
   display: block;
 }

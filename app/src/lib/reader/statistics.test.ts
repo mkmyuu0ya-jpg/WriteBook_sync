@@ -17,6 +17,11 @@ describe('textStatistics', () => {
     expect(textStatistics(parse('A😀 B'))).toMatchObject({ characters: 3 });
   });
 
+  it('counts formatted prose and link titles but not tag placeholders', () => {
+    expect(textStatistics(parse('[b:太字][i:斜体][[emphasismark:傍点 > ﹅]][[jumpuri:表示文字 > https://example.com]][pixivimage:123]')))
+      .toMatchObject({ characters: 10 });
+  });
+
   it('reports an empty body as one line and one page', () => {
     expect(textStatistics(parse(''))).toEqual({
       characters: 0,

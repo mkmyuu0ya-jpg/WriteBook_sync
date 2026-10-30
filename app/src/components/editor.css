@@ -7,6 +7,8 @@
   --chap: #8a3b12;
   --np: #2b5d8a;
   --rb: #6b3fa0;
+  --format: #8a3b12;
+  --link: #176b48;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -30,6 +32,8 @@
     --chap: #f0a070;
     --np: #8fb8e0;
     --rb: #c9a8f0;
+    --format: #f0a070;
+    --link: #78d6a8;
   }
 }
 .ed-bar {
@@ -123,4 +127,14 @@
 }
 .ed-host .tag-ruby {
   color: var(--rb);
+}
+.ed-host .tag-format,
+.ed-host .tag-emphasis {
+  color: var(--format);
+}
+.ed-host .tag-link {
+  color: var(--link);
+}
+.ed-host .tag-image {
+  color: var(--np);
 }

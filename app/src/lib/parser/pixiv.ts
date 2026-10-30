@@ -1,12 +1,17 @@
 /**
  * pixiv 小説記法のパーサ（Phase 1）。
- * 対応：章見出し [chapter:]、改ページ [newpage]、ルビ [[rb:漢字 > ふりがな]]。
- * 未対応のタグは、本文の文字のまま残す（#75 で対応を追加）。
+ * 対応：章見出し、改ページ、ルビ、太字、斜体、傍点、挿絵、リンク。
+ * 未対応のタグは、本文の文字のまま残す。
  */
 
 export type Inline =
   | { t: 'text'; s: string }
-  | { t: 'ruby'; base: string; rt: string };
+  | { t: 'ruby'; base: string; rt: string }
+  | { t: 'bold' | 'italic'; s: string }
+  | { t: 'emphasis'; s: string; mark: string }
+  | { t: 'link'; title: string; url: string }
+  | { t: 'jump'; page: number }
+  | { t: 'image'; source: 'pixiv' | 'uploaded'; id: string };
 
 export type Block =
   | { t: 'chapter'; title: string; line: number }
@@ -14,17 +19,25 @@ export type Block =
   | { t: 'blank'; line: number }
   | { t: 'para'; inlines: Inline[]; quote: boolean; line: number };
 
-const RUBY = /\[\[rb:(.+?)\s*>\s*(.+?)\]\]/g;
+const INLINE_TAG = /\[\[rb:\s*(.*?)\s*>\s*(.*?)\]\]|\[\[emphasismark:\s*(.*?)\s*>\s*(.*?)\]\]|\[\[jumpuri:\s*(.*?)\s*>\s*(.*?)\]\]|\[b:([^\]\n]*)\]|\[i:([^\]\n]*)\]|\[jump:(\d+)\]|\[(pixivimage|uploadedimage):([^\]\n]*)\]/g;
 const CHAPTER = /^\[chapter:(.*)\]$/;
 
 /** 1 行の本文を、文字とルビに分ける。 */
 export function parseInline(s: string): Inline[] {
   const out: Inline[] = [];
   let last = 0;
-  for (const m of s.matchAll(RUBY)) {
+  for (const m of s.matchAll(INLINE_TAG)) {
     const i = m.index ?? 0;
     if (i > last) out.push({ t: 'text', s: s.slice(last, i) });
-    out.push({ t: 'ruby', base: m[1].trim(), rt: m[2].trim() });
+    if (m[1] !== undefined) out.push({ t: 'ruby', base: m[1].trim(), rt: m[2].trim() });
+    else if (m[3] !== undefined) out.push({ t: 'emphasis', s: m[3].trim(), mark: m[4].trim() });
+    else if (m[5] !== undefined) out.push({ t: 'link', title: m[5].trim(), url: m[6].trim() });
+    else if (m[7] !== undefined) out.push({ t: 'bold', s: m[7] });
+    else if (m[8] !== undefined) out.push({ t: 'italic', s: m[8] });
+    else if (m[9] !== undefined) out.push({ t: 'jump', page: Number(m[9]) });
+    else if (m[10] !== undefined) {
+      out.push({ t: 'image', source: m[10] === 'pixivimage' ? 'pixiv' : 'uploaded', id: m[11] });
+    }
     last = i + m[0].length;
   }
   if (last < s.length) out.push({ t: 'text', s: s.slice(last) });

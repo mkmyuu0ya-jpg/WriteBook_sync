@@ -37,6 +37,68 @@ export function rubyEdit(text: string, from: number, to: number): Edit {
   return { from, to: from, insert: '[[rb: > ]]', caret: [c, c] };
 }
 
+function inlineTagEdit(
+  text: string,
+  from: number,
+  to: number,
+  makeTag: (selected: string) => string,
+  selectionStart: (selected: string) => number,
+): Edit {
+  const selected = text.slice(from, to);
+  const insert = makeTag(selected);
+  const start = from + selectionStart(selected);
+  return {
+    from,
+    to,
+    insert,
+    caret: selected ? [start, start + selected.length] : [start, start],
+  };
+}
+
+export function boldEdit(text: string, from: number, to: number): Edit {
+  return inlineTagEdit(text, from, to, (selected) => `[b:${selected}]`, () => '[b:'.length);
+}
+
+export function italicEdit(text: string, from: number, to: number): Edit {
+  return inlineTagEdit(text, from, to, (selected) => `[i:${selected}]`, () => '[i:'.length);
+}
+
+export function emphasisEdit(text: string, from: number, to: number): Edit {
+  return inlineTagEdit(
+    text,
+    from,
+    to,
+    (selected) => `[[emphasismark:${selected} > ﹅]]`,
+    () => '[[emphasismark:'.length,
+  );
+}
+
+export function pixivImageEdit(_text: string, from: number, to: number): Edit {
+  const insert = '[pixivimage:イラストID]';
+  const start = from + '[pixivimage:'.length;
+  return { from, to, insert, caret: [start, start + 'イラストID'.length] };
+}
+
+export function uploadedImageEdit(_text: string, from: number, to: number): Edit {
+  const insert = '[uploadedimage:アップロード挿絵ID]';
+  const start = from + '[uploadedimage:'.length;
+  return { from, to, insert, caret: [start, start + 'アップロード挿絵ID'.length] };
+}
+
+export function pageLinkEdit(_text: string, from: number, to: number): Edit {
+  const insert = '[jump:リンク先ページ番号]';
+  const start = from + '[jump:'.length;
+  return { from, to, insert, caret: [start, start + 'リンク先ページ番号'.length] };
+}
+
+export function urlLinkEdit(text: string, from: number, to: number): Edit {
+  const selected = text.slice(from, to);
+  const title = selected || 'リンクタイトル';
+  const insert = `[[jumpuri:${title} > リンク先URL]]`;
+  const start = from + `[[jumpuri:${title} > `.length;
+  return { from, to, insert, caret: [start, start + 'リンク先URL'.length] };
+}
+
 /** 編集を本文に当てはめる（テストと、エディタを使わない場面用）。 */
 export function applyEdit(text: string, e: Edit): string {
   return text.slice(0, e.from) + e.insert + text.slice(e.to);

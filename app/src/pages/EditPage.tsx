@@ -128,6 +128,13 @@ export default function EditPage() {
         {btn('見出し', () => editor.current?.chapter())}
         {btn('改ページ', () => editor.current?.newpage())}
         {btn('ルビ', () => editor.current?.ruby())}
+        {btn('太字', () => editor.current?.bold())}
+        {btn('斜体', () => editor.current?.italic())}
+        {btn('傍点', () => editor.current?.emphasis())}
+        {btn('挿絵', () => editor.current?.pixivImage())}
+        {btn('アップロード挿絵', () => editor.current?.uploadedImage())}
+        {btn('ページリンク', () => editor.current?.pageLink())}
+        {btn('URLリンク', () => editor.current?.urlLink())}
         {btn('元に戻す', () => editor.current?.undo())}
         {btn('やり直し', () => editor.current?.redo())}
         <form

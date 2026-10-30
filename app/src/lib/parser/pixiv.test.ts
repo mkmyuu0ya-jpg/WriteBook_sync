@@ -16,8 +16,19 @@ describe('parseInline', () => {
   it('ルビの前後の空白は取り除く', () => {
     expect(parseInline('[[rb:漢字  >  かんじ ]]')).toEqual([{ t: 'ruby', base: '漢字', rt: 'かんじ' }]);
   });
+  it('本文装飾・リンク・挿絵タグを解釈する', () => {
+    expect(parseInline('[b:太字][i:斜体][[emphasismark:傍点 > ○]][jump:2][[jumpuri:外部 > https://example.com]][pixivimage:123-2][uploadedimage:abc]')).toEqual([
+      { t: 'bold', s: '太字' },
+      { t: 'italic', s: '斜体' },
+      { t: 'emphasis', s: '傍点', mark: '○' },
+      { t: 'jump', page: 2 },
+      { t: 'link', title: '外部', url: 'https://example.com' },
+      { t: 'image', source: 'pixiv', id: '123-2' },
+      { t: 'image', source: 'uploaded', id: 'abc' },
+    ]);
+  });
   it('未対応のタグは文字のまま残す', () => {
-    expect(parseInline('[pixivimage:123]を貼る')).toEqual([{ t: 'text', s: '[pixivimage:123]を貼る' }]);
+    expect(parseInline('[unknown:123]を貼る')).toEqual([{ t: 'text', s: '[unknown:123]を貼る' }]);
   });
 });
 

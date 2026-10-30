@@ -12,7 +12,14 @@ function visibleCharacterCount(text: string): number {
 }
 
 function inlineCharacterCount(items: Inline[]): number {
-  return items.reduce((count, item) => count + visibleCharacterCount(item.t === 'ruby' ? item.base : item.s), 0);
+  return items.reduce((count, item) => {
+    if (item.t === 'ruby') return count + visibleCharacterCount(item.base);
+    if (item.t === 'text' || item.t === 'bold' || item.t === 'italic' || item.t === 'emphasis') {
+      return count + visibleCharacterCount(item.s);
+    }
+    if (item.t === 'link') return count + visibleCharacterCount(item.title);
+    return count;
+  }, 0);
 }
 
 export function textStatistics(blocks: Block[]): TextStatistics {

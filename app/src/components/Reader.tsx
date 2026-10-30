@@ -60,24 +60,76 @@ function getHighlightApi(): { registry: HighlightRegistryApi; Highlight: Highlig
   return registry && Highlight ? { registry, Highlight } : null;
 }
 
-function Inlines({ items }: { items: Inline[] }) {
+function emphasisCssValue(mark: string): string {
+  if (Array.from(mark).length !== 1) return 'filled sesame';
+  return `"${mark.replace(/["\\\r\n\f]/g, '\\$&')}"`;
+}
+
+function Inlines({ items, onJumpPage, pageCount }: {
+  items: Inline[];
+  onJumpPage: (page: number) => void;
+  pageCount: number;
+}) {
   return (
     <>
-      {items.map((x, i) =>
-        x.t === 'ruby' ? (
-          <ruby key={i}>
-            {x.base}
-            <rt>{x.rt}</rt>
-          </ruby>
-        ) : (
-          <span key={i}>{x.s}</span>
-        ),
-      )}
+      {items.map((item, index) => {
+        switch (item.t) {
+          case 'text':
+            return <span key={index}>{item.s}</span>;
+          case 'ruby':
+            return <ruby key={index}>{item.base}<rt>{item.rt}</rt></ruby>;
+          case 'bold':
+            return <strong key={index}>{item.s}</strong>;
+          case 'italic':
+            return <em key={index}>{item.s}</em>;
+          case 'emphasis':
+            return <span key={index} className="rd-emphasis" style={{ textEmphasisStyle: emphasisCssValue(item.mark || '﹅') }}>{item.s}</span>;
+          case 'link': {
+            let href: string | undefined;
+            try {
+              const url = new URL(item.url);
+              if (url.protocol === 'https:' || url.protocol === 'http:') href = url.href;
+            } catch {
+              href = undefined;
+            }
+            return href
+              ? <a key={index} href={href} target="_blank" rel="noopener noreferrer">{item.title}</a>
+              : <span key={index}>{item.title}</span>;
+          }
+          case 'jump':
+            return (
+              <button
+                key={index}
+                type="button"
+                className="rd-page-link"
+                disabled={item.page < 1 || item.page > pageCount}
+                onClick={() => onJumpPage(item.page)}
+              >
+                {item.page}ページへ
+              </button>
+            );
+          case 'image': {
+            const artworkId = item.id.split('-')[0];
+            const pixivUrl = item.source === 'pixiv' && /^\d+$/.test(artworkId)
+              ? `https://www.pixiv.net/artworks/${artworkId}`
+              : undefined;
+            const label = item.source === 'pixiv' ? 'pixiv挿絵' : 'アップロード挿絵';
+            const content = `${label}（${item.id}）`;
+            return pixivUrl
+              ? <a key={index} className="rd-illustration" href={pixivUrl} target="_blank" rel="noopener noreferrer">{content}</a>
+              : <span key={index} className="rd-illustration">{content}</span>;
+          }
+        }
+      })}
     </>
   );
 }
 
-function BlockView({ b }: { b: Block }) {
+function BlockView({ b, onJumpPage, pageCount }: {
+  b: Block;
+  onJumpPage: (page: number) => void;
+  pageCount: number;
+}) {
   switch (b.t) {
     case 'chapter':
       return <h2 data-line={b.line}>{b.title}</h2>;
@@ -88,7 +140,7 @@ function BlockView({ b }: { b: Block }) {
     case 'para':
       return (
         <p className={b.quote ? 'q' : undefined} data-line={b.line}>
-          <Inlines items={b.inlines} />
+          <Inlines items={b.inlines} onJumpPage={onJumpPage} pageCount={pageCount} />
         </p>
       );
   }
@@ -452,7 +504,7 @@ export default function Reader({
         aria-label={`閲覧ページ ${currentPageIndex + 1} / ${bookPages.length}`}
         tabIndex={0}
         onClick={(event) => {
-          if (event.target instanceof Element && event.target.closest('button')) return;
+          if (event.target instanceof Element && event.target.closest('button, a')) return;
           if (window.getSelection()?.toString().trim()) return;
           turnFromTap(event.clientX);
         }}
@@ -471,7 +523,7 @@ export default function Reader({
         <div className={`rd-vp ${vert ? 'v' : 'h'}`} ref={vpRef}>
           <div className="rd-tx" ref={txRef}>
             {currentBlocks.map((b) => (
-              <BlockView key={b.line} b={b} />
+              <BlockView key={b.line} b={b} onJumpPage={(page) => goToPage(page - 1)} pageCount={bookPages.length} />
             ))}
           </div>
         </div>
