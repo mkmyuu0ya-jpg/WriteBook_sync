@@ -252,10 +252,13 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
     if (preview && caret) {
       const previewRect = preview.getBoundingClientRect();
       const caretRect = caret.getBoundingClientRect();
-      if (caretRect.left < previewRect.left) preview.scrollLeft -= previewRect.left - caretRect.left;
-      else if (caretRect.right > previewRect.right) preview.scrollLeft += caretRect.right - previewRect.right;
-      if (caretRect.top < previewRect.top) preview.scrollTop -= previewRect.top - caretRect.top;
-      else if (caretRect.bottom > previewRect.bottom) preview.scrollTop += caretRect.bottom - previewRect.bottom;
+      const horizontalMargin = 16;
+      if (caretRect.left < previewRect.left + horizontalMargin) {
+        preview.scrollLeft -= previewRect.left + horizontalMargin - caretRect.left;
+      } else if (caretRect.right > previewRect.right - horizontalMargin) {
+        preview.scrollLeft += caretRect.right - previewRect.right + horizontalMargin;
+      }
+      preview.scrollTop = 0;
     }
   }, [vertical, verticalText, verticalSelection]);
 
@@ -400,6 +403,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
           {verticalText.slice(0, verticalSelection.start)}
           <span ref={verticalCaretRef} className="ed-vertical-caret" />
           {verticalText.slice(verticalSelection.end)}
+          <span className="ed-vertical-scroll-tail" aria-hidden="true" />
         </div>
         <textarea
         ref={verticalInputRef}
@@ -458,14 +462,6 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
           const to = input.selectionEnd;
           const next = input.value.slice(0, from) + pasted + input.value.slice(to);
           updateVerticalText(next, from + pasted.length);
-        }}
-        onScroll={(event) => {
-          const input = event.currentTarget;
-          const preview = verticalPreviewRef.current;
-          if (preview) {
-            preview.scrollLeft = input.scrollLeft;
-            preview.scrollTop = input.scrollTop;
-          }
         }}
         spellCheck={false}
       />
