@@ -203,6 +203,9 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   const previousVerticalRef = useRef(vertical);
   const verticalUndoRef = useRef<string[]>([]);
   const verticalRedoRef = useRef<string[]>([]);
+  const isComposingRef = useRef(false);
+  const compositionStartTextRef = useRef(initial);
+  const skipCompositionInputHistoryRef = useRef(false);
   const [verticalText, setVerticalText] = useState(initial);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -288,6 +291,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   useLayoutEffect(() => {
     if (!vertical) return;
     const input = verticalInputRef.current;
+    if (isComposingRef.current) return;
     if (input && getEditableText(input) !== verticalText) input.textContent = verticalText;
   }, [vertical, verticalText]);
 
@@ -458,20 +462,43 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         contentEditable={vertical}
         hidden={!vertical}
         suppressContentEditableWarning
+        onCompositionStart={() => {
+          compositionStartTextRef.current = verticalText;
+          isComposingRef.current = true;
+        }}
         onInput={(event) => {
           const previous = verticalText;
           const input = event.currentTarget;
           const next = getEditableText(input);
-          const selection = getSelectionOffsets(input);
-          if (input.childElementCount > 0 || input.textContent !== next) {
-            input.textContent = next;
-            setSelectionOffsets(input, selection.anchor, selection.head);
-          }
           if (next === previous) return;
-          verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
-          verticalRedoRef.current = [];
+          const nativeComposing = (event.nativeEvent as InputEvent).isComposing;
+          if (nativeComposing && !isComposingRef.current) compositionStartTextRef.current = previous;
+          const composing = isComposingRef.current || nativeComposing;
+          if (composing) isComposingRef.current = true;
+          if (!composing && !skipCompositionInputHistoryRef.current) {
+            verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
+            verticalRedoRef.current = [];
+          }
+          skipCompositionInputHistoryRef.current = false;
           setVerticalText(next);
           onChangeRef.current(next);
+        }}
+        onCompositionEnd={(event) => {
+          isComposingRef.current = false;
+          const next = getEditableText(event.currentTarget);
+          const previous = compositionStartTextRef.current;
+          if (next !== previous) {
+            verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
+            verticalRedoRef.current = [];
+          }
+          skipCompositionInputHistoryRef.current = true;
+          requestAnimationFrame(() => {
+            skipCompositionInputHistoryRef.current = false;
+          });
+          if (next !== verticalText) {
+            setVerticalText(next);
+            onChangeRef.current(next);
+          }
         }}
         onPaste={(event) => {
           event.preventDefault();
