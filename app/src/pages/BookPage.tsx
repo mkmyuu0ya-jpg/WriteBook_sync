@@ -6,6 +6,7 @@ import { hashText } from '../lib/data/hash';
 import { modifiedAfterPost } from '../lib/data/status';
 import { STATUS_LABEL, STATUS_ORDER, type Book, type Status } from '../lib/data/types';
 import { outline, parse } from '../lib/parser/pixiv';
+import { textStatistics } from '../lib/reader/statistics';
 import { getGitHubSettings } from '../lib/sync/settings';
 import { deleteGist, publishGist } from '../lib/sync/github';
 import { db, repo } from '../stores/library';
@@ -38,7 +39,9 @@ export default function BookPage() {
     void reload();
   }, [reload]);
 
-  const chapters = useMemo(() => outline(parse(body)), [body]);
+  const blocks = useMemo(() => parse(body), [body]);
+  const chapters = useMemo(() => outline(blocks), [blocks]);
+  const statistics = useMemo(() => textStatistics(blocks), [blocks]);
 
   if (book === undefined) return <Shell title="読み込み中">{null}</Shell>;
   if (book === null || book.trashedAt) return <Shell title="本が見つかりません" back={{ to: '/', label: '本棚' }}>{null}</Shell>;
@@ -143,6 +146,29 @@ export default function BookPage() {
           pixiv の記録：{book.pixiv.postedAt?.slice(0, 10)} {book.pixiv.url}
         </p>
       )}
+
+      <section className="mt-5 rounded-lg border border-slate-300 p-3 dark:border-slate-600" aria-labelledby="book-statistics-title">
+        <h2 id="book-statistics-title" className="font-semibold">本文の統計</h2>
+        <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="opacity-70">文字数</dt>
+            <dd className="font-semibold">{statistics.characters.toLocaleString('ja-JP')} 字</dd>
+          </div>
+          <div>
+            <dt className="opacity-70">行数</dt>
+            <dd className="font-semibold">{statistics.lines.toLocaleString('ja-JP')} 行</dd>
+          </div>
+          <div>
+            <dt className="opacity-70">段落数</dt>
+            <dd className="font-semibold">{statistics.paragraphs.toLocaleString('ja-JP')} 段落</dd>
+          </div>
+          <div>
+            <dt className="opacity-70">ページ数</dt>
+            <dd className="font-semibold">{statistics.pages.toLocaleString('ja-JP')} ページ</dd>
+          </div>
+        </dl>
+        <p className="mt-2 text-xs opacity-70">文字数は空白・改行・記法を除き、ルビは本文側だけを数えます。</p>
+      </section>
 
       <section className="mt-5 space-y-2 rounded-lg border border-slate-300 p-3 dark:border-slate-600">
         <h2 className="font-semibold">校正用公開リンク</h2>
