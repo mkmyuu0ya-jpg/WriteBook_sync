@@ -117,89 +117,13 @@ function getTextOffset(element: HTMLElement, node: Node, offset: number): number
   return getEditableText(content).length;
 }
 
-function getSelectionOffsets(element: HTMLElement): { anchor: number; head: number } {
-  const selection = window.getSelection();
-  const anchorNode = selection?.anchorNode;
-  const focusNode = selection?.focusNode;
-  if (!selection || !anchorNode || !focusNode || !element.contains(anchorNode) || !element.contains(focusNode)) {
-    const end = getEditableText(element).length;
-    return { anchor: end, head: end };
-  }
-  return {
-    anchor: getTextOffset(element, anchorNode, selection.anchorOffset),
-    head: getTextOffset(element, focusNode, selection.focusOffset),
-  };
-}
-
-function setSelectionOffsets(element: HTMLElement, anchor: number, head = anchor): void {
-  const locate = (offset: number): { node: Node; offset: number } => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    let remaining = Math.max(0, offset);
-    let last: Node | null = null;
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      last = node;
-      const length = node.textContent?.length ?? 0;
-      if (remaining <= length) return { node, offset: remaining };
-      remaining -= length;
-    }
-    return last
-      ? { node: last, offset: last.textContent?.length ?? 0 }
-      : { node: element, offset: 0 };
-  };
-
-  const selection = window.getSelection();
-  if (!selection) return;
-  const anchorPosition = locate(anchor);
-  const headPosition = locate(head);
-  selection.removeAllRanges();
-  if (typeof selection.setBaseAndExtent === 'function') {
-    selection.setBaseAndExtent(anchorPosition.node, anchorPosition.offset, headPosition.node, headPosition.offset);
-    return;
-  }
-  const range = document.createRange();
-  const forward = anchor <= head;
-  const start = forward ? anchorPosition : headPosition;
-  const end = forward ? headPosition : anchorPosition;
-  range.setStart(start.node, start.offset);
-  range.setEnd(end.node, end.offset);
-  selection.addRange(range);
-  if (!forward && typeof selection.extend === 'function') {
-    selection.collapse(end.node, end.offset);
-    selection.extend(start.node, start.offset);
-  }
-}
-
-function insertTextAtSelection(element: HTMLElement, text: string): string {
-  const selection = window.getSelection();
-  const range = document.createRange();
-  const selectedRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
-  if (selectedRange && element.contains(selectedRange.commonAncestorContainer)) {
-    range.setStart(selectedRange.startContainer, selectedRange.startOffset);
-    range.setEnd(selectedRange.endContainer, selectedRange.endOffset);
-  } else {
-    range.selectNodeContents(element);
-    range.collapse(false);
-  }
-  range.deleteContents();
-  const inserted = document.createTextNode(text);
-  range.insertNode(inserted);
-  range.setStartAfter(inserted);
-  range.collapse(true);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-  const next = getEditableText(element);
-  const caret = getTextOffset(element, range.startContainer, range.startOffset);
-  element.textContent = next;
-  setSelectionOffsets(element, caret);
-  return next;
-}
-
 /** 加筆修正モードのエディタ（CodeMirror 6）。 */
 const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startLine, onChange, vertical }, ref) {
   const codeMirrorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const verticalInputRef = useRef<HTMLDivElement>(null);
+  const verticalInputRef = useRef<HTMLTextAreaElement>(null);
+  const verticalPreviewRef = useRef<HTMLDivElement>(null);
+  const verticalCaretRef = useRef<HTMLSpanElement>(null);
   const previousVerticalRef = useRef(vertical);
   const verticalUndoRef = useRef<string[]>([]);
   const verticalRedoRef = useRef<string[]>([]);
@@ -207,6 +131,7 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   const compositionStartTextRef = useRef(initial);
   const skipCompositionInputHistoryRef = useRef(false);
   const [verticalText, setVerticalText] = useState(initial);
+  const [verticalSelection, setVerticalSelection] = useState({ start: initial.length, end: initial.length });
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const verticalRef = useRef(vertical);
@@ -252,18 +177,21 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
       const { head, anchor } = view.state.selection.main;
       const text = view.state.doc.toString();
       setVerticalText(text);
+      setVerticalSelection({ start: Math.min(anchor, head), end: Math.max(anchor, head) });
+      input.value = text;
+      input.setSelectionRange(Math.min(anchor, head), Math.max(anchor, head), anchor <= head ? 'forward' : 'backward');
       verticalUndoRef.current = [];
       verticalRedoRef.current = [];
       previousVerticalRef.current = true;
       requestAnimationFrame(() => {
-        setSelectionOffsets(input, anchor, head);
         input.focus();
       });
       return;
     }
 
-    const { anchor, head } = getSelectionOffsets(input);
-    const text = getEditableText(input);
+    const text = input.value;
+    const anchor = input.selectionDirection === 'backward' ? input.selectionEnd : input.selectionStart;
+    const head = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
     const oldText = view.state.doc.toString();
     let prefix = 0;
     while (prefix < oldText.length && prefix < text.length && oldText[prefix] === text[prefix]) prefix += 1;
@@ -286,14 +214,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
     });
     previousVerticalRef.current = false;
     view.focus();
+    setVerticalText(text);
   }, [vertical]);
-
-  useLayoutEffect(() => {
-    if (!vertical) return;
-    const input = verticalInputRef.current;
-    if (isComposingRef.current) return;
-    if (input && getEditableText(input) !== verticalText) input.textContent = verticalText;
-  }, [vertical, verticalText]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -314,35 +236,39 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
   const updateVerticalText = (nextText: string, selectionStart: number, selectionEnd = selectionStart) => {
     verticalUndoRef.current = [...verticalUndoRef.current, verticalText].slice(-200);
     verticalRedoRef.current = [];
+    if (verticalInputRef.current) verticalInputRef.current.value = nextText;
     setVerticalText(nextText);
+    setVerticalSelection({ start: selectionStart, end: selectionEnd });
     onChangeRef.current(nextText);
     requestAnimationFrame(() => {
       const input = verticalInputRef.current;
       if (!input) return;
-      if (getEditableText(input) !== nextText) input.textContent = nextText;
-      setSelectionOffsets(input, selectionStart, selectionEnd);
+      input.setSelectionRange(selectionStart, selectionEnd);
       input.focus();
     });
   };
 
-  const insertVerticalText = (text: string) => {
-    const input = verticalInputRef.current;
-    if (!input) return;
-    const previous = verticalText;
-    const next = insertTextAtSelection(input, text);
-    if (next === previous) return;
-    verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
-    verticalRedoRef.current = [];
-    setVerticalText(next);
-    onChangeRef.current(next);
-  };
+  useLayoutEffect(() => {
+    if (!vertical) return;
+    const preview = verticalPreviewRef.current;
+    const caret = verticalCaretRef.current;
+    if (preview && caret) {
+      const previewRect = preview.getBoundingClientRect();
+      const caretRect = caret.getBoundingClientRect();
+      if (caretRect.left < previewRect.left) preview.scrollLeft -= previewRect.left - caretRect.left;
+      else if (caretRect.right > previewRect.right) preview.scrollLeft += caretRect.right - previewRect.right;
+      if (caretRect.top < previewRect.top) preview.scrollTop -= previewRect.top - caretRect.top;
+      else if (caretRect.bottom > previewRect.bottom) preview.scrollTop += caretRect.bottom - previewRect.bottom;
+    }
+  }, [vertical, verticalText, verticalSelection]);
 
   useImperativeHandle(ref, () => {
     const apply = (make: (t: string, f: number, to: number) => Edit) => {
       if (verticalRef.current) {
         const input = verticalInputRef.current;
         if (!input) return;
-        const { anchor, head } = getSelectionOffsets(input);
+        const anchor = input.selectionDirection === 'backward' ? input.selectionEnd : input.selectionStart;
+        const head = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
         const e = make(verticalText, Math.min(anchor, head), Math.max(anchor, head));
         const nextText = verticalText.slice(0, e.from) + e.insert + verticalText.slice(e.to);
         updateVerticalText(nextText, e.caret[0], e.caret[1]);
@@ -378,38 +304,37 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         const previous = verticalUndoRef.current.pop();
         if (previous === undefined) return;
         const input = verticalInputRef.current;
-        const selection = input ? getSelectionOffsets(input) : { anchor: previous.length, head: previous.length };
+        const position = Math.min(input?.selectionStart ?? previous.length, previous.length);
         verticalRedoRef.current.push(verticalText);
+        if (input) {
+          input.value = previous;
+          input.setSelectionRange(position, position);
+        }
         setVerticalText(previous);
+        setVerticalSelection({ start: position, end: position });
         onChangeRef.current(previous);
-        requestAnimationFrame(() => {
-          if (!input) return;
-          if (getEditableText(input) !== previous) input.textContent = previous;
-          setSelectionOffsets(input, Math.min(selection.anchor, previous.length), Math.min(selection.head, previous.length));
-          input.focus();
-        });
+        input?.focus();
       },
       redo: () => {
         if (!verticalRef.current) return viewRef.current && redo(viewRef.current);
         const next = verticalRedoRef.current.pop();
         if (next === undefined) return;
         const input = verticalInputRef.current;
-        const selection = input ? getSelectionOffsets(input) : { anchor: next.length, head: next.length };
+        const position = Math.min(input?.selectionStart ?? next.length, next.length);
         verticalUndoRef.current.push(verticalText);
+        if (input) {
+          input.value = next;
+          input.setSelectionRange(position, position);
+        }
         setVerticalText(next);
+        setVerticalSelection({ start: position, end: position });
         onChangeRef.current(next);
-        requestAnimationFrame(() => {
-          if (!input) return;
-          if (getEditableText(input) !== next) input.textContent = next;
-          setSelectionOffsets(input, Math.min(selection.anchor, next.length), Math.min(selection.head, next.length));
-          input.focus();
-        });
+        input?.focus();
       },
       cursorLine: () => {
         if (verticalRef.current) {
           const input = verticalInputRef.current;
-          const { head } = input ? getSelectionOffsets(input) : { head: 0 };
-          return verticalText.slice(0, head).split(/\r?\n/).length - 1;
+          return input ? input.value.slice(0, input.selectionStart).split(/\r?\n/).length - 1 : 0;
         }
         const v = viewRef.current;
         return v ? v.state.doc.lineAt(v.state.selection.main.head).number - 1 : 0;
@@ -421,7 +346,8 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
           const lines = verticalText.split(/\r?\n/);
           const targetLine = Math.min(Math.max(Math.trunc(line), 1), lines.length);
           const pos = lines.slice(0, targetLine - 1).reduce((sum, item) => sum + item.length + 1, 0);
-          setSelectionOffsets(input, pos);
+          input.setSelectionRange(pos, pos);
+          setVerticalSelection({ start: pos, end: pos });
           input.focus();
           return targetLine;
         }
@@ -453,44 +379,68 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
         hidden={vertical}
         aria-hidden={vertical}
       />
-      <div
+      <div className="ed-vertical-surface" hidden={!vertical}>
+        <div
+          ref={verticalPreviewRef}
+          className="ed-vertical-preview"
+          aria-hidden="true"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            const input = verticalInputRef.current;
+            const preview = verticalPreviewRef.current;
+            if (!input || !preview) return;
+            const doc = input.ownerDocument as Document & {
+              caretRangeFromPoint?: (x: number, y: number) => Range | null;
+            };
+            const range = doc.caretRangeFromPoint?.(event.clientX, event.clientY);
+            if (range && preview.contains(range.startContainer)) {
+              const position = getTextOffset(preview, range.startContainer, range.startOffset);
+              input.setSelectionRange(position, position);
+              setVerticalSelection({ start: position, end: position });
+            }
+            input.focus();
+          }}
+        >
+          {verticalText.slice(0, verticalSelection.start)}
+          <span ref={verticalCaretRef} className="ed-vertical-caret" />
+          {verticalText.slice(verticalSelection.end)}
+        </div>
+        <textarea
         ref={verticalInputRef}
         className="ed-vertical-input"
         aria-label="縦書き本文"
-        role="textbox"
-        aria-multiline="true"
-        contentEditable={vertical}
-        hidden={!vertical}
-        suppressContentEditableWarning
-        onCompositionStart={() => {
-          compositionStartTextRef.current = verticalText;
-          isComposingRef.current = true;
-        }}
+        defaultValue={initial}
+        aria-hidden={!vertical}
+        tabIndex={vertical ? 0 : -1}
         onInput={(event) => {
           const previous = verticalText;
           const input = event.currentTarget;
-          const next = getEditableText(input);
+          const next = input.value;
           if (next === previous) return;
-          const nativeComposing = (event.nativeEvent as InputEvent).isComposing;
-          if (nativeComposing && !isComposingRef.current) compositionStartTextRef.current = previous;
-          const composing = isComposingRef.current || nativeComposing;
-          if (composing) isComposingRef.current = true;
+          const composing = isComposingRef.current || (event.nativeEvent as InputEvent).isComposing;
           if (!composing && !skipCompositionInputHistoryRef.current) {
             verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
             verticalRedoRef.current = [];
           }
           skipCompositionInputHistoryRef.current = false;
+          setVerticalSelection({ start: input.selectionStart, end: input.selectionEnd });
           setVerticalText(next);
           onChangeRef.current(next);
         }}
+        onCompositionStart={() => {
+          compositionStartTextRef.current = verticalText;
+          isComposingRef.current = true;
+        }}
         onCompositionEnd={(event) => {
           isComposingRef.current = false;
-          const next = getEditableText(event.currentTarget);
+          const input = event.currentTarget;
+          const next = input.value;
           const previous = compositionStartTextRef.current;
           if (next !== previous) {
             verticalUndoRef.current = [...verticalUndoRef.current, previous].slice(-200);
             verticalRedoRef.current = [];
           }
+          setVerticalSelection({ start: input.selectionStart, end: input.selectionEnd });
           skipCompositionInputHistoryRef.current = true;
           requestAnimationFrame(() => {
             skipCompositionInputHistoryRef.current = false;
@@ -500,13 +450,30 @@ const Editor = forwardRef<EditorHandle, Props>(function Editor({ initial, startL
             onChangeRef.current(next);
           }
         }}
+        onSelect={(event) => {
+          const input = event.currentTarget;
+          setVerticalSelection({ start: input.selectionStart, end: input.selectionEnd });
+        }}
         onPaste={(event) => {
           event.preventDefault();
+          const input = event.currentTarget;
           const pasted = event.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
-          insertVerticalText(pasted);
+          const from = input.selectionStart;
+          const to = input.selectionEnd;
+          const next = input.value.slice(0, from) + pasted + input.value.slice(to);
+          updateVerticalText(next, from + pasted.length);
+        }}
+        onScroll={(event) => {
+          const input = event.currentTarget;
+          const preview = verticalPreviewRef.current;
+          if (preview) {
+            preview.scrollLeft = input.scrollLeft;
+            preview.scrollTop = input.scrollTop;
+          }
         }}
         spellCheck={false}
       />
+      </div>
     </div>
   );
 });

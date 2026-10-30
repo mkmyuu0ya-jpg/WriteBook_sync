@@ -7,8 +7,10 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: var(--editor-viewport-height, 100vh);
-  height: var(--editor-viewport-height, 100dvh);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100svh;
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);
@@ -71,11 +73,13 @@
   font-weight: 600;
 }
 .ed-host {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   min-width: 0;
+  max-height: var(--editor-host-max-height, 100%);
   background: var(--bg);
 }
 .ed-cm-host {
@@ -84,7 +88,7 @@
   min-width: 0;
 }
 .ed-cm-host[hidden],
-.ed-vertical-input[hidden] {
+.ed-vertical-surface[hidden] {
   display: none;
 }
 .ed-cm-host .cm-editor {
@@ -105,24 +109,21 @@
   line-height: 1.9;
   padding: 8px 12px;
 }
-.ed-vertical-input {
+.ed-vertical-surface {
   display: none;
-}
-.ed-host .ed-vertical-input:not([hidden]) {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  padding: 8px 12px;
-  border: 0;
-  outline: 0;
-  resize: none;
-  overflow: auto;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
   background: var(--bg);
-  color: inherit;
+}
+.ed-vertical-preview {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--fg);
   -webkit-text-fill-color: var(--fg);
   direction: ltr;
   font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
@@ -132,12 +133,49 @@
   text-orientation: mixed;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  caret-color: var(--fg);
-  opacity: 1;
-  cursor: text;
-  -webkit-text-size-adjust: 100%;
-  user-select: text;
+  pointer-events: auto;
   -webkit-overflow-scrolling: touch;
+}
+.ed-vertical-caret {
+  display: inline-block;
+  width: 1em;
+  height: 2px;
+  margin: 0 -0.5em;
+  background: var(--fg);
+  vertical-align: baseline;
+  animation: ed-caret-blink 1s steps(2, start) infinite;
+}
+@keyframes ed-caret-blink {
+  to { visibility: hidden; }
+}
+.ed-vertical-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: transparent;
+  direction: ltr;
+  font-family: system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.9;
+  cursor: text;
+  user-select: text;
+  -webkit-text-size-adjust: 100%;
+  pointer-events: none;
+}
+.ed-vertical-surface:not([hidden]) {
+  display: block;
 }
 .ed-cm-host .cm-cursor {
   border-left-color: var(--fg);

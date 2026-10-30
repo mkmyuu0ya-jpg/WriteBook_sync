@@ -17,7 +17,8 @@ export default function EditPage() {
   const [lineInput, setLineInput] = useState('1');
   const [vertical, setVertical] = useState(false);
   const editor = useRef<EditorHandle>(null);
-  const editorScreen = useRef<HTMLDivElement>(null);
+  const screen = useRef<HTMLDivElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
   const latest = useRef('');
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
@@ -38,25 +39,26 @@ export default function EditPage() {
 
   useEffect(() => {
     if (!init) return;
-    const screen = editorScreen.current;
-    if (!screen) return;
-
-    const viewport = window.visualViewport;
-    let previousHeight = 0;
-    const updateHeight = () => {
-      const height = viewport?.height ?? window.innerHeight;
-      if (Math.abs(height - previousHeight) < 1) return;
-      previousHeight = height;
-      screen.style.setProperty('--editor-viewport-height', `${height}px`);
+    const updateEditorHeight = () => {
+      const viewport = window.visualViewport;
+      const screenElement = screen.current;
+      const toolbarElement = toolbar.current;
+      if (!screenElement || !toolbarElement) return;
+      const visibleHeight = viewport?.height ?? window.innerHeight;
+      const toolbarBottom = toolbarElement.getBoundingClientRect().bottom;
+      screenElement.style.setProperty(
+        '--editor-host-max-height',
+        `${Math.max(0, visibleHeight - toolbarBottom)}px`,
+      );
     };
-
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    viewport?.addEventListener('resize', updateHeight);
+    updateEditorHeight();
+    window.visualViewport?.addEventListener('resize', updateEditorHeight);
+    window.visualViewport?.addEventListener('scroll', updateEditorHeight);
+    window.addEventListener('resize', updateEditorHeight);
     return () => {
-      window.removeEventListener('resize', updateHeight);
-      viewport?.removeEventListener('resize', updateHeight);
-      screen.style.removeProperty('--editor-viewport-height');
+      window.visualViewport?.removeEventListener('resize', updateEditorHeight);
+      window.visualViewport?.removeEventListener('scroll', updateEditorHeight);
+      window.removeEventListener('resize', updateEditorHeight);
     };
   }, [init]);
 
@@ -114,8 +116,8 @@ export default function EditPage() {
     </button>
   );
   return (
-    <div className="ed" ref={editorScreen}>
-      <div className="ed-bar">
+    <div className="ed" ref={screen}>
+      <div className="ed-bar" ref={toolbar}>
         <button
           onClick={async () => {
             const line = editor.current?.cursorLine() ?? 0;
